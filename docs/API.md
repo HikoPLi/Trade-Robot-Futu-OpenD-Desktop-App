@@ -54,6 +54,15 @@ Defined in `apps/desktop/src-tauri/src/commands.rs`.
 - `engine_delete_model(id: string)`
 - `engine_evaluate_model(params: ModelEvalParams) -> ModelEvalRunResult`
 
+### Model API Routing (LLM Providers)
+
+- `engine_update_ai_provider(provider: AiProviderConfig)`
+- `engine_update_ai_router(router: AiRouterConfig)`
+- `engine_test_ai_provider(provider_id: string) -> AiSignalResponse`
+- `engine_generate_ai_signal(req: AiSignalRequest) -> AiSignalResponse`
+  - provider route is applied in order: `primary` then `fallbacks`
+  - if all providers fail, engine-side caller should choose safe behavior (`hold` / no-order)
+
 ### Backtest + Audit
 
 - `engine_generate_sample_candles_csv(symbol, interval_sec, limit) -> path`

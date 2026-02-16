@@ -1,5 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type {
+  AiProviderConfig,
+  AiRouterConfig,
+  AiSignalRequest,
+  AiSignalResponse,
   EngineSnapshot,
   ModelCatalog,
   ModelEvalParams,
@@ -47,6 +51,10 @@ import {
   engineTestOpenDConnection,
   engineUpdateOpenDConfig,
   engineUpdateOpenDTradeEnv,
+  engineUpdateAiProvider,
+  engineUpdateAiRouter,
+  engineTestAiProvider,
+  engineGenerateAiSignal,
   engineUpdateTimeControls,
   engineUpdateRiskLimits,
   listenEngineEvents,
@@ -81,6 +89,10 @@ type EngineContextValue = {
   updateOpenDConfig(opend: OpenDConfig): Promise<void>;
   updateOpenDTradeEnv(env: OpenDTradeEnv): Promise<void>;
   updateTimeControls(time_controls: TimeControls): Promise<void>;
+  updateAiProvider(provider: AiProviderConfig): Promise<void>;
+  updateAiRouter(router: AiRouterConfig): Promise<void>;
+  testAiProvider(provider_id: string): Promise<AiSignalResponse>;
+  generateAiSignal(req: AiSignalRequest): Promise<AiSignalResponse>;
   testOpenDConnection(): Promise<void>;
 
   generateSampleCandlesCsv(symbol: string, interval_sec: number, limit: number): Promise<string>;
@@ -272,6 +284,20 @@ export function EngineProvider({ children }: { children: ReactNode }) {
       updateTimeControls: async (time_controls) => {
         await engineUpdateTimeControls(time_controls);
         await refresh();
+      },
+      updateAiProvider: async (provider) => {
+        await engineUpdateAiProvider(provider);
+        await refresh();
+      },
+      updateAiRouter: async (router) => {
+        await engineUpdateAiRouter(router);
+        await refresh();
+      },
+      testAiProvider: async (provider_id) => {
+        return engineTestAiProvider(provider_id);
+      },
+      generateAiSignal: async (req) => {
+        return engineGenerateAiSignal(req);
       },
       testOpenDConnection: async () => {
         await engineTestOpenDConnection();

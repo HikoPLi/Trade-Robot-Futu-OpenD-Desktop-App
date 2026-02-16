@@ -14,8 +14,11 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {
-            let engine = tauri::async_runtime::block_on(async { trader_core::EngineHandle::new().await })?;
-            let state = AppState { engine: engine.clone() };
+            let engine =
+                tauri::async_runtime::block_on(async { trader_core::EngineHandle::new().await })?;
+            let state = AppState {
+                engine: engine.clone(),
+            };
             app.manage(state);
 
             // Forward engine events to the frontend as Tauri events.
@@ -81,6 +84,10 @@ pub fn run() {
             engine_update_opend_config,
             engine_update_opend_trade_env,
             engine_update_time_controls,
+            engine_update_ai_provider,
+            engine_update_ai_router,
+            engine_test_ai_provider,
+            engine_generate_ai_signal,
             engine_test_opend_connection,
             engine_secret_status,
             engine_set_secret,

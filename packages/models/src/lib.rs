@@ -1,7 +1,7 @@
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
-use trader_shared::Candle;
 use std::collections::BTreeMap;
+use trader_shared::Candle;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelMetadata {
@@ -36,7 +36,10 @@ impl BuiltInModel {
 }
 
 pub fn built_in_models() -> Vec<Box<dyn Model>> {
-    vec![BuiltInModel::Sma(SmaModel::default()).boxed(), BuiltInModel::ZScore(ZScoreModel::default()).boxed()]
+    vec![
+        BuiltInModel::Sma(SmaModel::default()).boxed(),
+        BuiltInModel::ZScore(ZScoreModel::default()).boxed(),
+    ]
 }
 
 pub fn create_model(id: &str) -> anyhow::Result<Box<dyn Model>> {

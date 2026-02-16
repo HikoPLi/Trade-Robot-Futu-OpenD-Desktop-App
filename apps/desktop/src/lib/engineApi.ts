@@ -2,6 +2,10 @@ import { invoke } from "@tauri-apps/api/core";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { listen } from "@tauri-apps/api/event";
 import {
+  AiProviderConfigSchema,
+  AiRouterConfigSchema,
+  AiSignalRequestSchema,
+  AiSignalResponseSchema,
   AuditEventRowSchema,
   BacktestRunResultSchema,
   EngineSnapshotSchema,
@@ -15,6 +19,10 @@ import {
   StrategyDefinitionSchema,
   StrategyUpsertRequestSchema,
   RegisteredModelSchema,
+  type AiProviderConfig,
+  type AiRouterConfig,
+  type AiSignalRequest,
+  type AiSignalResponse,
   type AuditEventRow,
   type BacktestParams,
   type BacktestRunResult,
@@ -97,6 +105,27 @@ export async function engineUpdateOpenDTradeEnv(env: OpenDTradeEnv): Promise<voi
 
 export async function engineUpdateTimeControls(time_controls: TimeControls): Promise<void> {
   await invoke("engine_update_time_controls", { time_controls });
+}
+
+export async function engineUpdateAiProvider(provider: AiProviderConfig): Promise<void> {
+  const parsed = AiProviderConfigSchema.parse(provider);
+  await invoke("engine_update_ai_provider", { provider: parsed });
+}
+
+export async function engineUpdateAiRouter(router: AiRouterConfig): Promise<void> {
+  const parsed = AiRouterConfigSchema.parse(router);
+  await invoke("engine_update_ai_router", { router: parsed });
+}
+
+export async function engineTestAiProvider(provider_id: string): Promise<AiSignalResponse> {
+  const raw = await invoke("engine_test_ai_provider", { provider_id });
+  return AiSignalResponseSchema.parse(raw);
+}
+
+export async function engineGenerateAiSignal(req: AiSignalRequest): Promise<AiSignalResponse> {
+  const parsed = AiSignalRequestSchema.parse(req);
+  const raw = await invoke("engine_generate_ai_signal", { req: parsed });
+  return AiSignalResponseSchema.parse(raw);
 }
 
 export async function engineTestOpenDConnection(): Promise<void> {

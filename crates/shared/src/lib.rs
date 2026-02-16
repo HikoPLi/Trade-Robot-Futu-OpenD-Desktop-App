@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use uuid::Uuid;
 
 pub type TraceId = Uuid;
@@ -79,6 +80,146 @@ impl Default for OpenDConfig {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AiProviderKind {
+    Openai,
+    Deepseek,
+    Qwen,
+    Grok,
+    Ollama,
+    OpenaiCompatible,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AiProviderConfig {
+    /// Stable provider id in profile map, e.g. "openai".
+    pub id: String,
+    pub kind: AiProviderKind,
+    pub enabled: bool,
+    /// Base URL of provider API (without endpoint suffix).
+    pub base_url: String,
+    pub model: String,
+    /// Keychain secret key name, e.g. "ai.openai_api_key".
+    pub api_key_secret: String,
+    pub timeout_ms: u64,
+    pub max_tokens: u32,
+    pub temperature: f64,
+}
+
+impl Default for AiProviderConfig {
+    fn default() -> Self {
+        Self {
+            id: "openai".to_string(),
+            kind: AiProviderKind::Openai,
+            enabled: false,
+            base_url: "https://api.openai.com/v1".to_string(),
+            model: "gpt-4o-mini".to_string(),
+            api_key_secret: "ai.openai_api_key".to_string(),
+            timeout_ms: 6_000,
+            max_tokens: 180,
+            temperature: 0.0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AiRouterConfig {
+    pub primary: String,
+    pub fallbacks: Vec<String>,
+}
+
+impl Default for AiRouterConfig {
+    fn default() -> Self {
+        Self {
+            primary: "openai".to_string(),
+            fallbacks: vec![
+                "deepseek".to_string(),
+                "qwen".to_string(),
+                "grok".to_string(),
+                "ollama".to_string(),
+            ],
+        }
+    }
+}
+
+pub fn default_ai_providers() -> BTreeMap<String, AiProviderConfig> {
+    let mut m = BTreeMap::new();
+    m.insert(
+        "openai".to_string(),
+        AiProviderConfig {
+            id: "openai".to_string(),
+            kind: AiProviderKind::Openai,
+            enabled: false,
+            base_url: "https://api.openai.com/v1".to_string(),
+            model: "gpt-4o-mini".to_string(),
+            api_key_secret: "ai.openai_api_key".to_string(),
+            timeout_ms: 6_000,
+            max_tokens: 180,
+            temperature: 0.0,
+        },
+    );
+    m.insert(
+        "deepseek".to_string(),
+        AiProviderConfig {
+            id: "deepseek".to_string(),
+            kind: AiProviderKind::Deepseek,
+            enabled: false,
+            base_url: "https://api.deepseek.com/v1".to_string(),
+            model: "deepseek-chat".to_string(),
+            api_key_secret: "ai.deepseek_api_key".to_string(),
+            timeout_ms: 6_000,
+            max_tokens: 180,
+            temperature: 0.0,
+        },
+    );
+    m.insert(
+        "qwen".to_string(),
+        AiProviderConfig {
+            id: "qwen".to_string(),
+            kind: AiProviderKind::Qwen,
+            enabled: false,
+            base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1".to_string(),
+            model: "qwen-turbo".to_string(),
+            api_key_secret: "ai.qwen_api_key".to_string(),
+            timeout_ms: 6_000,
+            max_tokens: 180,
+            temperature: 0.0,
+        },
+    );
+    m.insert(
+        "grok".to_string(),
+        AiProviderConfig {
+            id: "grok".to_string(),
+            kind: AiProviderKind::Grok,
+            enabled: false,
+            base_url: "https://api.x.ai/v1".to_string(),
+            model: "grok-2-latest".to_string(),
+            api_key_secret: "ai.grok_api_key".to_string(),
+            timeout_ms: 6_000,
+            max_tokens: 180,
+            temperature: 0.0,
+        },
+    );
+    m.insert(
+        "ollama".to_string(),
+        AiProviderConfig {
+            id: "ollama".to_string(),
+            kind: AiProviderKind::Ollama,
+            enabled: false,
+            base_url: "http://127.0.0.1:11434".to_string(),
+            model: "llama3.1:8b".to_string(),
+            api_key_secret: "ai.ollama_api_key".to_string(),
+            timeout_ms: 4_000,
+            max_tokens: 120,
+            temperature: 0.0,
+        },
+    );
+    m
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct RiskLimits {
@@ -132,6 +273,9 @@ pub struct ProfileConfig {
 
     /// Global kill-switch hotkey, e.g. "CmdOrCtrl+Alt+K".
     pub kill_switch_hotkey: String,
+
+    pub ai_router: AiRouterConfig,
+    pub ai_providers: BTreeMap<String, AiProviderConfig>,
 }
 
 impl Default for ProfileConfig {
@@ -144,6 +288,8 @@ impl Default for ProfileConfig {
             time_controls: TimeControls::default(),
             live_trading_unlocked: false,
             kill_switch_hotkey: "CmdOrCtrl+Alt+K".to_string(),
+            ai_router: AiRouterConfig::default(),
+            ai_providers: default_ai_providers(),
         }
     }
 }
@@ -273,6 +419,36 @@ pub struct Fill {
     pub ts: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AiTradeAction {
+    Buy,
+    Sell,
+    Hold,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AiSignalRequest {
+    pub symbol: Symbol,
+    pub strategy_id: String,
+    pub proposed_side: OrderSide,
+    pub reason: String,
+    pub last_price: f64,
+    pub spread_bps: f64,
+    pub horizon_sec: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AiSignalResponse {
+    pub provider_id: String,
+    pub model: String,
+    pub action: AiTradeAction,
+    pub confidence: f64,
+    pub reason: String,
+    pub safeguards: Vec<String>,
+    pub raw: serde_json::Value,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Position {
     pub symbol: Symbol,
@@ -298,8 +474,12 @@ pub enum EngineEvent {
         order: OrderRequest,
         reason: String,
     },
-    RiskHalt { reason: String },
-    Info { message: String },
+    RiskHalt {
+        reason: String,
+    },
+    Info {
+        message: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

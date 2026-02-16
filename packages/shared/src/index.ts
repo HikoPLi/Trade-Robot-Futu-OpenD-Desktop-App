@@ -28,6 +28,35 @@ export const OpenDConfigSchema = z.object({
 });
 export type OpenDConfig = z.infer<typeof OpenDConfigSchema>;
 
+export const AiProviderKindSchema = z.enum([
+  "openai",
+  "deepseek",
+  "qwen",
+  "grok",
+  "ollama",
+  "openai_compatible",
+]);
+export type AiProviderKind = z.infer<typeof AiProviderKindSchema>;
+
+export const AiProviderConfigSchema = z.object({
+  id: z.string(),
+  kind: AiProviderKindSchema,
+  enabled: z.boolean(),
+  base_url: z.string(),
+  model: z.string(),
+  api_key_secret: z.string(),
+  timeout_ms: z.number().int().min(500),
+  max_tokens: z.number().int().min(1),
+  temperature: z.number().min(0).max(2),
+});
+export type AiProviderConfig = z.infer<typeof AiProviderConfigSchema>;
+
+export const AiRouterConfigSchema = z.object({
+  primary: z.string(),
+  fallbacks: z.array(z.string()),
+});
+export type AiRouterConfig = z.infer<typeof AiRouterConfigSchema>;
+
 export const RiskLimitsSchema = z.object({
   max_position_qty: z.number().int().min(0),
   max_order_qty: z.number().int().min(0),
@@ -47,6 +76,8 @@ export const ProfileConfigSchema = z.object({
   time_controls: TimeControlsSchema,
   live_trading_unlocked: z.boolean(),
   kill_switch_hotkey: z.string(),
+  ai_router: AiRouterConfigSchema,
+  ai_providers: z.record(z.string(), AiProviderConfigSchema),
 });
 export type ProfileConfig = z.infer<typeof ProfileConfigSchema>;
 
@@ -84,6 +115,9 @@ export type OrderSide = z.infer<typeof OrderSideSchema>;
 export const OrderTypeSchema = z.enum(["market", "limit"]);
 export type OrderType = z.infer<typeof OrderTypeSchema>;
 
+export const AiTradeActionSchema = z.enum(["buy", "sell", "hold"]);
+export type AiTradeAction = z.infer<typeof AiTradeActionSchema>;
+
 export const OrderStatusSchema = z.enum([
   "pending_submit",
   "submitted",
@@ -119,6 +153,28 @@ export const OrderRequestSchema = z.object({
   client_order_id: z.string(),
 });
 export type OrderRequest = z.infer<typeof OrderRequestSchema>;
+
+export const AiSignalRequestSchema = z.object({
+  symbol: z.string(),
+  strategy_id: z.string(),
+  proposed_side: OrderSideSchema,
+  reason: z.string(),
+  last_price: z.number(),
+  spread_bps: z.number(),
+  horizon_sec: z.number().int().min(1),
+});
+export type AiSignalRequest = z.infer<typeof AiSignalRequestSchema>;
+
+export const AiSignalResponseSchema = z.object({
+  provider_id: z.string(),
+  model: z.string(),
+  action: AiTradeActionSchema,
+  confidence: z.number(),
+  reason: z.string(),
+  safeguards: z.array(z.string()),
+  raw: z.unknown(),
+});
+export type AiSignalResponse = z.infer<typeof AiSignalResponseSchema>;
 
 export const PositionSchema = z.object({
   symbol: z.string(),

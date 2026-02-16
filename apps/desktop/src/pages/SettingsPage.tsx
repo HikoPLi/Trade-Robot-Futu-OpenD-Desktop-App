@@ -1,5 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
-import { EnableLiveTradingPhrase, type OpenDConfig, type OpenDTradeEnv, type RiskLimits, type TimeControls, type SessionWindowUtc } from "@trade-robot/shared";
+import {
+  EnableLiveTradingPhrase,
+  type AiProviderConfig,
+  type AiRouterConfig,
+  type OpenDConfig,
+  type OpenDTradeEnv,
+  type RiskLimits,
+  type SessionWindowUtc,
+  type TimeControls,
+} from "@trade-robot/shared";
 import { useTranslation } from "react-i18next";
 import { Badge, Button, Card, Field, Input, Select } from "../components/ui";
 import { useEngine } from "../lib/engineContext";
@@ -17,6 +26,73 @@ const DEFAULT_RISK: RiskLimits = {
 
 function riskNonDefault(r: RiskLimits) {
   return JSON.stringify(r) !== JSON.stringify(DEFAULT_RISK);
+}
+
+function defaultAiProvider(id: string): AiProviderConfig {
+  const lower = id.toLowerCase();
+  if (lower === "deepseek") {
+    return {
+      id: "deepseek",
+      kind: "deepseek",
+      enabled: false,
+      base_url: "https://api.deepseek.com/v1",
+      model: "deepseek-chat",
+      api_key_secret: "ai.deepseek_api_key",
+      timeout_ms: 6000,
+      max_tokens: 180,
+      temperature: 0,
+    };
+  }
+  if (lower === "qwen") {
+    return {
+      id: "qwen",
+      kind: "qwen",
+      enabled: false,
+      base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      model: "qwen-turbo",
+      api_key_secret: "ai.qwen_api_key",
+      timeout_ms: 6000,
+      max_tokens: 180,
+      temperature: 0,
+    };
+  }
+  if (lower === "grok") {
+    return {
+      id: "grok",
+      kind: "grok",
+      enabled: false,
+      base_url: "https://api.x.ai/v1",
+      model: "grok-2-latest",
+      api_key_secret: "ai.grok_api_key",
+      timeout_ms: 6000,
+      max_tokens: 180,
+      temperature: 0,
+    };
+  }
+  if (lower === "ollama") {
+    return {
+      id: "ollama",
+      kind: "ollama",
+      enabled: false,
+      base_url: "http://127.0.0.1:11434",
+      model: "llama3.1:8b",
+      api_key_secret: "ai.ollama_api_key",
+      timeout_ms: 4000,
+      max_tokens: 120,
+      temperature: 0,
+    };
+  }
+  return {
+    id: "openai",
+    kind: "openai",
+    enabled: false,
+    base_url: "https://api.openai.com/v1",
+    model: "gpt-4o-mini",
+    api_key_secret: "ai.openai_api_key",
+    timeout_ms: 6000,
+    max_tokens: 180,
+    temperature: 0,
+  };
 }
 
 export function SettingsPage() {
@@ -40,6 +116,21 @@ export function SettingsPage() {
   const [timeControls, setTimeControls] = useState<TimeControls>(
     ap?.time_controls ?? { enabled: false, sessions_utc: [], blackout_utc: [], cooldown_sec: 0 },
   );
+  const [aiProviders, setAiProviders] = useState<Record<string, AiProviderConfig>>(
+    ap?.ai_providers ?? {
+      openai: defaultAiProvider("openai"),
+      deepseek: defaultAiProvider("deepseek"),
+      qwen: defaultAiProvider("qwen"),
+      grok: defaultAiProvider("grok"),
+      ollama: defaultAiProvider("ollama"),
+    },
+  );
+  const [aiRouter, setAiRouter] = useState<AiRouterConfig>(
+    ap?.ai_router ?? { primary: "openai", fallbacks: ["deepseek", "qwen", "grok", "ollama"] },
+  );
+  const [aiFallbackText, setAiFallbackText] = useState<string>((ap?.ai_router?.fallbacks ?? []).join(", "));
+  const [selectedAiProvider, setSelectedAiProvider] = useState<string>("openai");
+  const [aiTestResult, setAiTestResult] = useState<string>("");
 
   const [unlockPhrase, setUnlockPhrase] = useState("");
   const [disclaimerRead, setDisclaimerRead] = useState(false);
@@ -59,6 +150,14 @@ export function SettingsPage() {
     setOpend({ ...s.active_profile.opend, use_tls: false });
     setTrdEnv(s.active_profile.opend_trd_env);
     setTimeControls(s.active_profile.time_controls);
+    setAiProviders(s.active_profile.ai_providers);
+    setAiRouter(s.active_profile.ai_router);
+    setAiFallbackText((s.active_profile.ai_router?.fallbacks ?? []).join(", "));
+    const providerIds = Object.keys(s.active_profile.ai_providers ?? {});
+    setSelectedAiProvider((prev) =>
+      providerIds.includes(prev) ? prev : providerIds[0] ?? "openai",
+    );
+    setAiTestResult("");
     setUnlockPhrase("");
     setDisclaimerRead(false);
     setSecretValue("");
@@ -99,6 +198,30 @@ export function SettingsPage() {
       .map((x) => x.trim().toUpperCase())
       .filter(Boolean);
   }, [allowedMarketsText]);
+
+  const aiProviderIds = useMemo(() => {
+    return Object.keys(aiProviders).sort();
+  }, [aiProviders]);
+
+  const aiProvider = useMemo<AiProviderConfig>(() => {
+    const id = selectedAiProvider || "openai";
+    return aiProviders[id] ?? { ...defaultAiProvider(id), id };
+  }, [aiProviders, selectedAiProvider]);
+
+  function patchAiProvider(patch: Partial<AiProviderConfig>) {
+    const id = selectedAiProvider || "openai";
+    setAiProviders((prev) => {
+      const base = prev[id] ?? { ...defaultAiProvider(id), id };
+      return {
+        ...prev,
+        [id]: {
+          ...base,
+          ...patch,
+          id,
+        },
+      };
+    });
+  }
 
   const killSwitchConfigured = hotkey.trim().length > 0;
   const riskConfigured = riskNonDefault({ ...risk, symbol_allowlist: allowlist, allowed_markets: allowedMarkets });
@@ -394,6 +517,179 @@ export function SettingsPage() {
 
       <Card style={{ padding: 14 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <div style={{ fontWeight: 700 }}>{t("settings.ai_models")}</div>
+          <Badge tone="neutral">{t("settings.ai_badge")}</Badge>
+        </div>
+        <div style={{ marginTop: 10, fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
+          {t("settings.ai_help")}
+        </div>
+
+        <div style={{ marginTop: 12 }} className="tr-grid">
+          <div style={{ gridColumn: "span 3" }}>
+            <Field label={t("settings.ai_provider")}>
+              <Select value={selectedAiProvider} onChange={(e) => setSelectedAiProvider(e.currentTarget.value)}>
+                {aiProviderIds.map((id) => (
+                  <option key={id} value={id}>
+                    {id}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </div>
+          <div style={{ gridColumn: "span 3" }}>
+            <Field label={t("settings.enabled")}>
+              <Select
+                value={aiProvider.enabled ? "true" : "false"}
+                onChange={(e) => patchAiProvider({ enabled: e.currentTarget.value === "true" })}
+              >
+                <option value="false">{t("common.off")}</option>
+                <option value="true">{t("common.on")}</option>
+              </Select>
+            </Field>
+          </div>
+          <div style={{ gridColumn: "span 3" }}>
+            <Field label={t("settings.ai_kind")}>
+              <Select
+                value={aiProvider.kind}
+                onChange={(e) => patchAiProvider({ kind: e.currentTarget.value as AiProviderConfig["kind"] })}
+              >
+                <option value="openai">openai</option>
+                <option value="deepseek">deepseek</option>
+                <option value="qwen">qwen</option>
+                <option value="grok">grok</option>
+                <option value="ollama">ollama</option>
+                <option value="openai_compatible">openai_compatible</option>
+              </Select>
+            </Field>
+          </div>
+          <div style={{ gridColumn: "span 3" }}>
+            <Field label={t("settings.ai_secret_key")}>
+              <Input
+                value={aiProvider.api_key_secret}
+                onChange={(e) => patchAiProvider({ api_key_secret: e.currentTarget.value })}
+              />
+            </Field>
+          </div>
+
+          <div style={{ gridColumn: "span 4" }}>
+            <Field label={t("settings.base_url")}>
+              <Input value={aiProvider.base_url} onChange={(e) => patchAiProvider({ base_url: e.currentTarget.value })} />
+            </Field>
+          </div>
+          <div style={{ gridColumn: "span 3" }}>
+            <Field label={t("settings.ai_model")}>
+              <Input value={aiProvider.model} onChange={(e) => patchAiProvider({ model: e.currentTarget.value })} />
+            </Field>
+          </div>
+          <div style={{ gridColumn: "span 2" }}>
+            <Field label={t("settings.ai_timeout_ms")}>
+              <Input
+                type="number"
+                min={500}
+                max={120000}
+                value={aiProvider.timeout_ms}
+                onChange={(e) => patchAiProvider({ timeout_ms: Number(e.currentTarget.value) })}
+              />
+            </Field>
+          </div>
+          <div style={{ gridColumn: "span 2" }}>
+            <Field label={t("settings.ai_max_tokens")}>
+              <Input
+                type="number"
+                min={1}
+                max={32768}
+                value={aiProvider.max_tokens}
+                onChange={(e) => patchAiProvider({ max_tokens: Number(e.currentTarget.value) })}
+              />
+            </Field>
+          </div>
+          <div style={{ gridColumn: "span 1" }}>
+            <Field label={t("settings.ai_temp")}>
+              <Input
+                type="number"
+                min={0}
+                max={2}
+                step={0.1}
+                value={aiProvider.temperature}
+                onChange={(e) => patchAiProvider({ temperature: Number(e.currentTarget.value) })}
+              />
+            </Field>
+          </div>
+
+          <div style={{ gridColumn: "span 3" }}>
+            <Field label={t("settings.ai_primary")}>
+              <Select
+                value={aiRouter.primary}
+                onChange={(e) => setAiRouter({ ...aiRouter, primary: e.currentTarget.value })}
+              >
+                {aiProviderIds.map((id) => (
+                  <option key={id} value={id}>
+                    {id}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </div>
+          <div style={{ gridColumn: "span 9" }}>
+            <Field label={t("settings.ai_fallbacks")} hint={t("settings.ai_fallbacks_hint")}>
+              <Input value={aiFallbackText} onChange={(e) => setAiFallbackText(e.currentTarget.value)} />
+            </Field>
+          </div>
+
+          <div style={{ gridColumn: "span 12", display: "flex", justifyContent: "flex-end", gap: 8 }}>
+            <Button
+              variant="ghost"
+              onClick={() =>
+                eng
+                  .testAiProvider(selectedAiProvider)
+                  .then((res) => {
+                    setAiTestResult(`${res.provider_id} · ${res.action} · ${(res.confidence * 100).toFixed(1)}% · ${res.reason}`);
+                  })
+                  .catch((e) => {
+                    setAiTestResult(String(e));
+                  })
+              }
+            >
+              {t("settings.ai_test_provider")}
+            </Button>
+            <Button
+              variant="primary"
+              onClick={() =>
+                eng
+                  .updateAiProvider(aiProvider)
+                  .then(() => alert(t("common.saved")))
+                  .catch((e) => alert(String(e)))
+              }
+            >
+              {t("settings.ai_save_provider")}
+            </Button>
+            <Button
+              variant="primary"
+              onClick={() => {
+                const fallbacks = aiFallbackText
+                  .split(",")
+                  .map((x) => x.trim().toLowerCase())
+                  .filter(Boolean);
+                eng
+                  .updateAiRouter({ ...aiRouter, primary: aiRouter.primary.trim().toLowerCase(), fallbacks })
+                  .then(() => alert(t("common.saved")))
+                  .catch((e) => alert(String(e)));
+              }}
+            >
+              {t("settings.ai_save_router")}
+            </Button>
+          </div>
+        </div>
+
+        {aiTestResult ? (
+          <div style={{ marginTop: 10, fontSize: 12, color: "var(--muted)" }}>
+            {t("settings.ai_test_result")}: <span className="tr-mono">{aiTestResult}</span>
+          </div>
+        ) : null}
+      </Card>
+
+      <Card style={{ padding: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
           <div style={{ fontWeight: 700 }}>{t("settings.time_controls")}</div>
           <Badge tone={timeControls.enabled ? "warn" : "neutral"}>
             {timeControls.enabled ? t("common.enabled") : t("common.disabled")}
@@ -542,6 +838,12 @@ export function SettingsPage() {
                 <option value="futu.trade_password">futu.trade_password</option>
                 <option value="futu.api_token">futu.api_token</option>
                 <option value="opend.tls_client_key_passphrase">opend.tls_client_key_passphrase</option>
+                <option value="ai.openai_api_key">ai.openai_api_key</option>
+                <option value="ai.deepseek_api_key">ai.deepseek_api_key</option>
+                <option value="ai.qwen_api_key">ai.qwen_api_key</option>
+                <option value="ai.grok_api_key">ai.grok_api_key</option>
+                <option value="ai.ollama_api_key">ai.ollama_api_key</option>
+                <option value="ai.custom_api_key">ai.custom_api_key</option>
               </Select>
             </Field>
           </div>

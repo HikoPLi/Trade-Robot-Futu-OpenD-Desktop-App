@@ -1,6 +1,8 @@
 use chrono::{DateTime, Datelike, Duration, Timelike, Utc};
 use std::collections::{HashMap, VecDeque};
-use trader_shared::{OrderRequest, OrderSide, OrderType, Position, ProfileMode, Quote, RiskLimits, TimeControls};
+use trader_shared::{
+    OrderRequest, OrderSide, OrderType, Position, ProfileMode, Quote, RiskLimits, TimeControls,
+};
 
 #[derive(Debug, thiserror::Error)]
 #[error("risk rejected: {reason}")]
@@ -44,10 +46,7 @@ impl RiskEngine {
         &self.limits
     }
 
-    pub fn validate_order(
-        &mut self,
-        ctx: OrderValidationCtx<'_>,
-    ) -> Result<(), RiskReject> {
+    pub fn validate_order(&mut self, ctx: OrderValidationCtx<'_>) -> Result<(), RiskReject> {
         let OrderValidationCtx {
             now,
             mode,
@@ -68,7 +67,8 @@ impl RiskEngine {
 
         if matches!(mode, ProfileMode::Live) && !live_trading_unlocked {
             return Err(RiskReject {
-                reason: "live trading is locked (complete Enable Live Trading workflow)".to_string(),
+                reason: "live trading is locked (complete Enable Live Trading workflow)"
+                    .to_string(),
             });
         }
 
@@ -141,7 +141,10 @@ impl RiskEngine {
         }
         if req.qty > self.limits.max_order_qty {
             return Err(RiskReject {
-                reason: format!("order qty {} exceeds max_order_qty {}", req.qty, self.limits.max_order_qty),
+                reason: format!(
+                    "order qty {} exceeds max_order_qty {}",
+                    req.qty, self.limits.max_order_qty
+                ),
             });
         }
 
@@ -159,26 +162,37 @@ impl RiskEngine {
         }
         if (new_qty as u32) > self.limits.max_position_qty {
             return Err(RiskReject {
-                reason: format!("position limit exceeded: new_qty={} > max_position_qty={}", new_qty, self.limits.max_position_qty),
+                reason: format!(
+                    "position limit exceeded: new_qty={} > max_position_qty={}",
+                    new_qty, self.limits.max_position_qty
+                ),
             });
         }
 
         if matches!(req.order_type, OrderType::Limit) {
             let Some(limit_price) = req.limit_price else {
-                return Err(RiskReject { reason: "limit order requires limit_price".to_string() });
+                return Err(RiskReject {
+                    reason: "limit order requires limit_price".to_string(),
+                });
             };
             if limit_price <= 0.0 {
-                return Err(RiskReject { reason: "limit_price must be > 0".to_string() });
+                return Err(RiskReject {
+                    reason: "limit_price must be > 0".to_string(),
+                });
             }
             let Some(q) = last_quote else {
-                return Err(RiskReject { reason: "no market price available for price sanity check".to_string() });
+                return Err(RiskReject {
+                    reason: "no market price available for price sanity check".to_string(),
+                });
             };
             let band = q.last * self.limits.price_band_pct;
             let lo = (q.last - band).max(0.01);
             let hi = q.last + band;
             if !(lo..=hi).contains(&limit_price) {
                 return Err(RiskReject {
-                    reason: format!("limit_price out of band: {limit_price:.4} not in [{lo:.4}, {hi:.4}]"),
+                    reason: format!(
+                        "limit_price out of band: {limit_price:.4} not in [{lo:.4}, {hi:.4}]"
+                    ),
                 });
             }
         }
@@ -193,7 +207,10 @@ impl RiskEngine {
         }
         if self.order_times.len() as u32 >= self.limits.max_orders_per_minute {
             return Err(RiskReject {
-                reason: format!("rate limit: max_orders_per_minute {} exceeded", self.limits.max_orders_per_minute),
+                reason: format!(
+                    "rate limit: max_orders_per_minute {} exceeded",
+                    self.limits.max_orders_per_minute
+                ),
             });
         }
 
@@ -236,8 +253,12 @@ fn window_contains_utc(w: &trader_shared::SessionWindowUtc, now: DateTime<Utc>) 
     if !w.weekdays.is_empty() && !w.weekdays.contains(&wd) {
         return false;
     }
-    let Some(start) = parse_hhmm_to_minutes(&w.start_hhmm) else { return false };
-    let Some(end) = parse_hhmm_to_minutes(&w.end_hhmm) else { return false };
+    let Some(start) = parse_hhmm_to_minutes(&w.start_hhmm) else {
+        return false;
+    };
+    let Some(end) = parse_hhmm_to_minutes(&w.end_hhmm) else {
+        return false;
+    };
     let mins = now.hour() * 60 + now.minute();
 
     // If start==end: treat as empty window.
@@ -256,7 +277,9 @@ fn window_contains_utc(w: &trader_shared::SessionWindowUtc, now: DateTime<Utc>) 
 mod tests {
     use super::*;
     use proptest::prelude::*;
-    use trader_shared::{OrderRequest, OrderSide, OrderType, ProfileMode, RiskLimits, SessionWindowUtc};
+    use trader_shared::{
+        OrderRequest, OrderSide, OrderType, ProfileMode, RiskLimits, SessionWindowUtc,
+    };
 
     proptest! {
         #[test]
@@ -406,7 +429,10 @@ mod tests {
             position: None,
         });
         assert!(reject_cooldown.is_err());
-        assert!(reject_cooldown.unwrap_err().reason.contains("cooldown active"));
+        assert!(reject_cooldown
+            .unwrap_err()
+            .reason
+            .contains("cooldown active"));
 
         // Outside session => reject.
         let outside = chrono::DateTime::parse_from_rfc3339("2026-02-16T08:00:00Z")

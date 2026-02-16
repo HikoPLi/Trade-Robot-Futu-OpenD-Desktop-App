@@ -2,12 +2,14 @@ use anyhow::Context;
 use chrono::{DateTime, Utc};
 use std::path::Path;
 use trader_shared::{
-    BacktestParams, BacktestReport, BacktestTrade, Candle, OrderSide, OrderType, Position, StrategyContext,
+    BacktestParams, BacktestReport, BacktestTrade, Candle, OrderSide, OrderType, Position,
+    StrategyContext,
 };
 use uuid::Uuid;
 
 pub fn load_candles_csv(path: &Path, symbol: &str) -> anyhow::Result<Vec<Candle>> {
-    let mut rdr = csv::Reader::from_path(path).with_context(|| format!("open candles csv: {path:?}"))?;
+    let mut rdr =
+        csv::Reader::from_path(path).with_context(|| format!("open candles csv: {path:?}"))?;
     #[derive(serde::Deserialize)]
     struct Row {
         ts: String,
@@ -98,9 +100,14 @@ pub fn run_backtest(params: BacktestParams) -> anyhow::Result<BacktestReport> {
                     cash -= cost;
                     let old_qty = position.qty;
                     let new_qty = old_qty + req.qty as i64;
-                    let new_cost_basis = position.avg_cost * (old_qty as f64) + (req.qty as f64) * fill_price + fee;
+                    let new_cost_basis =
+                        position.avg_cost * (old_qty as f64) + (req.qty as f64) * fill_price + fee;
                     position.qty = new_qty;
-                    position.avg_cost = if new_qty > 0 { new_cost_basis / (new_qty as f64) } else { 0.0 };
+                    position.avg_cost = if new_qty > 0 {
+                        new_cost_basis / (new_qty as f64)
+                    } else {
+                        0.0
+                    };
                     executed_qty
                 }
                 OrderSide::Sell => {
@@ -145,7 +152,10 @@ pub fn run_backtest(params: BacktestParams) -> anyhow::Result<BacktestReport> {
 
     let ending_cash = cash;
     let ending_position_qty = position.qty;
-    let ending_equity = equity_curve.last().map(|(_, e)| *e).unwrap_or(params.starting_cash);
+    let ending_equity = equity_curve
+        .last()
+        .map(|(_, e)| *e)
+        .unwrap_or(params.starting_cash);
 
     let total_return_pct = if params.starting_cash <= 0.0 {
         0.0
@@ -154,7 +164,10 @@ pub fn run_backtest(params: BacktestParams) -> anyhow::Result<BacktestReport> {
     };
 
     let max_drawdown_pct = compute_max_drawdown_pct(&equity_curve);
-    let sharpe_ratio = compute_sharpe_ratio(&equity_curve, candles.first().map(|c| c.interval_sec).unwrap_or(60));
+    let sharpe_ratio = compute_sharpe_ratio(
+        &equity_curve,
+        candles.first().map(|c| c.interval_sec).unwrap_or(60),
+    );
     let avg_equity = if equity_curve.is_empty() {
         params.starting_cash.max(0.0)
     } else {
@@ -166,7 +179,11 @@ pub fn run_backtest(params: BacktestParams) -> anyhow::Result<BacktestReport> {
         0.0
     };
 
-    let hit_rate = if sells == 0 { 0.0 } else { wins as f64 / sells as f64 };
+    let hit_rate = if sells == 0 {
+        0.0
+    } else {
+        wins as f64 / sells as f64
+    };
 
     let finished_at = Utc::now();
 
@@ -305,7 +322,13 @@ mod tests {
     #[test]
     fn max_drawdown_basic() {
         let t0 = Utc::now();
-        let eq = vec![(t0, 100.0), (t0, 110.0), (t0, 90.0), (t0, 120.0), (t0, 80.0)];
+        let eq = vec![
+            (t0, 100.0),
+            (t0, 110.0),
+            (t0, 90.0),
+            (t0, 120.0),
+            (t0, 80.0),
+        ];
         let dd = compute_max_drawdown_pct(&eq);
         assert!(dd > 0.0);
     }

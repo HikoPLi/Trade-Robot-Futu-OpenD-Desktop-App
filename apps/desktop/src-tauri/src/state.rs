@@ -4,4 +4,3 @@ use trader_core::EngineHandle;
 pub struct AppState {
     pub engine: EngineHandle,
 }
-

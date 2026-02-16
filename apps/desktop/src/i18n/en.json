@@ -213,7 +213,14 @@
     "metrics_ic": "IC",
     "metrics_acc": "accuracy",
     "open_json": "Open JSON",
-    "open_html": "Open HTML"
+    "open_html": "Open HTML",
+    "ai_signal_title": "AI Signal Workbench",
+    "ai_signal_help": "Runs short-horizon signal checks through the configured provider route (OpenAI/DeepSeek/Qwen/Grok/Ollama). Fail-safe default is hold/no-trade.",
+    "ai_horizon": "Horizon (sec)",
+    "ai_reason": "Context",
+    "ai_run": "Generate AI Signal",
+    "ai_action": "Action",
+    "ai_confidence": "Confidence"
   },
   "backtest": {
     "runner": "Backtest Runner",
@@ -342,7 +349,25 @@
     "live_unlocked_alert": "Live trading unlocked (workflow complete).",
     "live_warning": "IMPORTANT: Live mode can place real orders. Use the kill switch immediately if anything looks wrong.",
     "language": "Language",
-    "language_hint": "UI language preference (stored locally)."
+    "language_hint": "UI language preference (stored locally).",
+    "ai_models": "Model API Routing",
+    "ai_badge": "Provider routing + fail-safe hold on uncertainty",
+    "ai_help": "Configure model API providers and routing order. Keep providers disabled until API keys and risk controls are fully verified.",
+    "ai_provider": "Provider",
+    "ai_kind": "Provider Kind",
+    "ai_secret_key": "API Key Secret",
+    "base_url": "Base URL",
+    "ai_model": "Model",
+    "ai_timeout_ms": "Timeout (ms)",
+    "ai_max_tokens": "Max Tokens",
+    "ai_temp": "Temperature",
+    "ai_primary": "Primary Provider",
+    "ai_fallbacks": "Fallback Providers",
+    "ai_fallbacks_hint": "Comma-separated provider ids, e.g. deepseek,qwen,grok,ollama",
+    "ai_test_provider": "Test Provider",
+    "ai_save_provider": "Save Provider",
+    "ai_save_router": "Save Router",
+    "ai_test_result": "Test Result"
   },
   "catalog": {
     "strategy": {
@@ -357,6 +382,10 @@
       "rhai_script": {
         "name": "Custom Script (Rhai)",
         "description": "Sandboxed custom strategy script (disabled in live mode)."
+      },
+      "short_term_momentum_bot": {
+        "name": "Short-Term Momentum Bot",
+        "description": "Short-horizon momentum entries with stop/take/horizon exits and optional AI confirmation gate."
       }
     },
     "model": {

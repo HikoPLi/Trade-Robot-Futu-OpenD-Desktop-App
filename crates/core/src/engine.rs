@@ -1,8 +1,6 @@
 use crate::{
     audit::AuditLog,
-    backtest,
-    config,
-    logging,
+    backtest, config, logging,
     metrics::{Metrics, MetricsSnapshot},
     paper::{PaperExecution, PaperExecutionConfig},
     paths::{app_paths, AppPaths},
@@ -14,16 +12,23 @@ use chrono::{DateTime, NaiveDate, Utc};
 use parking_lot::{Mutex, RwLock};
 use std::{
     collections::{BTreeMap, BTreeSet},
-    sync::{atomic::{AtomicBool, Ordering}, Arc},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
 };
 use tokio::sync::broadcast;
 use tokio_stream::StreamExt;
-use trader_futu_connector::{MarketSubscription, MockMarketData, MockMarketDataConfig, OpenDClient, OpenDConfig as ConnectorOpenDConfig};
+use trader_futu_connector::{
+    MarketSubscription, MockMarketData, MockMarketDataConfig, OpenDClient,
+    OpenDConfig as ConnectorOpenDConfig,
+};
 use trader_shared::{
-    AppConfig, BacktestParams, BacktestReport, EngineEvent, ModelEvalParams, ModelEvalReport,
-    ModelEvalRunResult, ModelKind, ModelRegisterRequest, RegisteredModel, StrategyContext,
-    StrategyDefinition, StrategyLifecycle, StrategyUpsertRequest, Order, OrderRequest, Position,
-    ProfileConfig, Quote, RiskLimits,
+    AiProviderConfig, AiRouterConfig, AiSignalRequest, AiSignalResponse, AiTradeAction, AppConfig,
+    BacktestParams, BacktestReport, EngineEvent, ModelEvalParams, ModelEvalReport,
+    ModelEvalRunResult, ModelKind, ModelRegisterRequest, Order, OrderRequest, Position,
+    ProfileConfig, Quote, RegisteredModel, RiskLimits, StrategyContext, StrategyDefinition,
+    StrategyLifecycle, StrategyUpsertRequest,
 };
 use uuid::Uuid;
 
@@ -156,6 +161,7 @@ struct EngineInner {
     event_tx: broadcast::Sender<EngineEvent>,
 
     mock_market: MockMarketData,
+    model_api: crate::model_api::ModelApiRuntime,
 }
 
 #[derive(Clone)]
@@ -181,6 +187,7 @@ impl EngineHandle {
         let audit = AuditLog::open(&paths).await?;
         let state_db = StateDb::open(&paths).await?;
         let (event_tx, _) = broadcast::channel(1024);
+        let model_api = crate::model_api::ModelApiRuntime::new()?;
 
         let risk = RiskEngine::new(active_profile.risk.clone());
 
@@ -216,11 +223,16 @@ impl EngineHandle {
             strategies: Mutex::new(Vec::new()),
             event_tx,
             mock_market: MockMarketData::new(MockMarketDataConfig::default()),
+            model_api,
         });
 
         let handle = Self { inner };
         handle
-            .audit_info("engine_start", serde_json::json!({"safe_mode": safe_mode}), None)
+            .audit_info(
+                "engine_start",
+                serde_json::json!({"safe_mode": safe_mode}),
+                None,
+            )
             .await;
 
         handle.spawn_market_tasks();
@@ -254,7 +266,10 @@ impl EngineHandle {
                 for (order, fill) in fills {
                     this.inner.metrics.inc_fill();
                     this.apply_fill(&fill).await;
-                    let _ = this.inner.event_tx.send(EngineEvent::OrderUpdated(order.clone()));
+                    let _ = this
+                        .inner
+                        .event_tx
+                        .send(EngineEvent::OrderUpdated(order.clone()));
                     let _ = this.inner.event_tx.send(EngineEvent::Fill(fill.clone()));
                     this.audit_info(
                         "order_filled",
@@ -266,7 +281,10 @@ impl EngineHandle {
 
                 if let Some(candle) = bar_builder.on_quote(&q) {
                     this.inner.metrics.inc_candle();
-                    let _ = this.inner.event_tx.send(EngineEvent::Candle(candle.clone()));
+                    let _ = this
+                        .inner
+                        .event_tx
+                        .send(EngineEvent::Candle(candle.clone()));
                     this.handle_candle(candle).await;
                 }
             }
@@ -338,8 +356,9 @@ impl EngineHandle {
             use_tls: prof.opend.use_tls,
         };
 
-        let (client, _info) =
-            OpenDClient::connect(cfg).await.map_err(|e| anyhow::anyhow!(e.to_string()))?;
+        let (client, _info) = OpenDClient::connect(cfg)
+            .await
+            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
 
         // Collect trade headers for routing.
         let accounts = client
@@ -351,7 +370,9 @@ impl EngineHandle {
             trader_shared::OpenDTradeEnv::Simulate => {
                 trader_futu_connector::pb::trd_common::TrdEnv::Simulate as i32
             }
-            trader_shared::OpenDTradeEnv::Real => trader_futu_connector::pb::trd_common::TrdEnv::Real as i32,
+            trader_shared::OpenDTradeEnv::Real => {
+                trader_futu_connector::pb::trd_common::TrdEnv::Real as i32
+            }
         };
 
         let mut headers: BTreeMap<i32, trader_futu_connector::OpenDTradeHeader> = BTreeMap::new();
@@ -362,11 +383,13 @@ impl EngineHandle {
             }
             acc_ids.insert(acc.acc_id);
             for mkt in acc.trd_market_auth_list.iter().cloned() {
-                headers.entry(mkt).or_insert(trader_futu_connector::OpenDTradeHeader {
-                    trd_env: acc.trd_env,
-                    acc_id: acc.acc_id,
-                    trd_market: mkt,
-                });
+                headers
+                    .entry(mkt)
+                    .or_insert(trader_futu_connector::OpenDTradeHeader {
+                        trd_env: acc.trd_env,
+                        acc_id: acc.acc_id,
+                        trd_market: mkt,
+                    });
             }
         }
 
@@ -391,8 +414,12 @@ impl EngineHandle {
             live.last_reconcile_at = None;
         }
 
-        self.audit_info("opend_connected", serde_json::json!({"env": desired_env}), None)
-            .await;
+        self.audit_info(
+            "opend_connected",
+            serde_json::json!({"env": desired_env}),
+            None,
+        )
+        .await;
 
         Ok(())
     }
@@ -420,7 +447,10 @@ impl EngineHandle {
 
                             if let Some(candle) = bar_builder.on_quote(&q) {
                                 this.inner.metrics.inc_candle();
-                                let _ = this.inner.event_tx.send(EngineEvent::Candle(candle.clone()));
+                                let _ = this
+                                    .inner
+                                    .event_tx
+                                    .send(EngineEvent::Candle(candle.clone()));
                                 this.handle_candle(candle).await;
                             }
                         }
@@ -434,7 +464,10 @@ impl EngineHandle {
                                 let mut live = this.inner.live.lock();
                                 live.orders.insert(o.id.clone(), o.clone());
                             }
-                            let _ = this.inner.event_tx.send(EngineEvent::OrderUpdated(o.clone()));
+                            let _ = this
+                                .inner
+                                .event_tx
+                                .send(EngineEvent::OrderUpdated(o.clone()));
                             this.audit_info(
                                 "live_order_updated",
                                 serde_json::json!({"order": o}),
@@ -445,12 +478,8 @@ impl EngineHandle {
                         trader_futu_connector::OpenDEvent::Fill(f) => {
                             this.inner.metrics.inc_fill();
                             let _ = this.inner.event_tx.send(EngineEvent::Fill(f.clone()));
-                            this.audit_info(
-                                "live_fill",
-                                serde_json::json!({"fill": f}),
-                                None,
-                            )
-                            .await;
+                            this.audit_info("live_fill", serde_json::json!({"fill": f}), None)
+                                .await;
                         }
                         trader_futu_connector::OpenDEvent::Position(p) => {
                             {
@@ -469,7 +498,8 @@ impl EngineHandle {
                     Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
                     Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
                         let _ = this.inner.event_tx.send(EngineEvent::Info {
-                            message: "OpenD event receiver lagged; some events were dropped".to_string(),
+                            message: "OpenD event receiver lagged; some events were dropped"
+                                .to_string(),
                         });
                     }
                 }
@@ -523,7 +553,9 @@ impl EngineHandle {
     async fn live_unlock_trade(&self, client: &OpenDClient) -> anyhow::Result<()> {
         // Required for actual trade placement in OpenD.
         let profile = self.inner.cfg.read().active_profile.clone();
-        let Some(pwd) = crate::secrets::get_secret(profile, "futu.trade_password".to_string()).await? else {
+        let Some(pwd) =
+            crate::secrets::get_secret(profile, "futu.trade_password".to_string()).await?
+        else {
             anyhow::bail!("missing secret futu.trade_password (stored in OS keychain)");
         };
         let digest = md5::compute(pwd.as_bytes());
@@ -546,7 +578,10 @@ impl EngineHandle {
             let existing_id = live.idempotency.get(&req.client_order_id).cloned();
             let existing = existing_id.and_then(|id| live.orders.get(&id).cloned());
             let client = live.client.clone();
-            let header = live.headers.get(&trd_market_from_symbol(&req.symbol)).cloned();
+            let header = live
+                .headers
+                .get(&trd_market_from_symbol(&req.symbol))
+                .cloned();
             (client, header, existing)
         };
 
@@ -555,11 +590,16 @@ impl EngineHandle {
         }
 
         let Some(client) = client else {
-            let _ = self.engage_kill_switch("OpenD is not connected (refusing live order)".to_string()).await;
+            let _ = self
+                .engage_kill_switch("OpenD is not connected (refusing live order)".to_string())
+                .await;
             anyhow::bail!("OpenD is not connected");
         };
         let Some(header) = header else {
-            anyhow::bail!("no trade account header available for symbol {}", req.symbol);
+            anyhow::bail!(
+                "no trade account header available for symbol {}",
+                req.symbol
+            );
         };
 
         let need_unlock = { !self.inner.live.lock().trade_unlocked };
@@ -611,7 +651,10 @@ impl EngineHandle {
             live.orders.insert(order_id.clone(), order.clone());
         }
 
-        let _ = self.inner.event_tx.send(EngineEvent::OrderUpdated(order.clone()));
+        let _ = self
+            .inner
+            .event_tx
+            .send(EngineEvent::OrderUpdated(order.clone()));
         self.audit_info(
             "live_order_submitted",
             serde_json::json!({"order": order, "order_ref": {"order_id": order_ref.order_id, "order_id_ex": order_ref.order_id_ex}, "trace_id": trace_id.map(|t| t.to_string())}),
@@ -632,7 +675,10 @@ impl EngineHandle {
             let Some(order) = live.orders.get(order_id).cloned() else {
                 anyhow::bail!("unknown order_id: {order_id}");
             };
-            let header = live.headers.get(&trd_market_from_symbol(&order.symbol)).cloned();
+            let header = live
+                .headers
+                .get(&trd_market_from_symbol(&order.symbol))
+                .cloned();
             (client, header, order)
         };
         let Some(header) = header else {
@@ -651,7 +697,10 @@ impl EngineHandle {
             live.orders.insert(order.id.clone(), order.clone());
         }
 
-        let _ = self.inner.event_tx.send(EngineEvent::OrderUpdated(order.clone()));
+        let _ = self
+            .inner
+            .event_tx
+            .send(EngineEvent::OrderUpdated(order.clone()));
         self.audit_info(
             "live_order_cancel_requested",
             serde_json::json!({"order_id": order_id}),
@@ -664,8 +713,11 @@ impl EngineHandle {
     async fn live_reconcile(&self) -> anyhow::Result<()> {
         let (client, headers) = {
             let live = self.inner.live.lock();
-            let Some(client) = live.client.clone() else { return Ok(()) };
-            let headers: Vec<trader_futu_connector::OpenDTradeHeader> = live.headers.values().cloned().collect();
+            let Some(client) = live.client.clone() else {
+                return Ok(());
+            };
+            let headers: Vec<trader_futu_connector::OpenDTradeHeader> =
+                live.headers.values().cloned().collect();
             (client, headers)
         };
 
@@ -733,7 +785,10 @@ impl EngineHandle {
             let quote_stale_reason = live.last_quote_ts.and_then(|ts| {
                 let dt = now - ts;
                 if dt > chrono::Duration::seconds(30) {
-                    Some(format!("quote feed stale (last update {}s ago)", dt.num_seconds()))
+                    Some(format!(
+                        "quote feed stale (last update {}s ago)",
+                        dt.num_seconds()
+                    ))
                 } else {
                     None
                 }
@@ -763,36 +818,45 @@ impl EngineHandle {
         let watchlist: Vec<String> = self.inner.watchlist.read().iter().cloned().collect();
         let quotes: Vec<Quote> = self.inner.quotes.read().values().cloned().collect();
 
-        let (cash, positions, realized_pnl, unrealized_pnl, equity, orders) = match active_profile.mode {
-            trader_shared::ProfileMode::Live => {
-                let live = self.inner.live.lock();
-                let cash = live.cash;
-                let positions: Vec<Position> = live.positions.values().cloned().collect();
-                let orders: Vec<Order> = live.orders.values().cloned().collect();
-                let quotes_map = self.inner.quotes.read();
-                let unreal = compute_unrealized_pnl(&positions, &quotes_map);
-                let equity = if live.equity > 0.0 {
-                    live.equity
-                } else {
-                    cash + compute_positions_value(&positions, &quotes_map)
-                };
-                (cash, positions, 0.0, unreal, equity, orders)
-            }
-            _ => {
-                let (cash, positions, realized_pnl, unrealized_pnl, equity) = {
-                    let port = self.inner.portfolio.lock();
-                    let cash = port.cash;
-                    let positions: Vec<Position> = port.positions.values().cloned().collect();
-                    let realized = port.realized_pnl;
+        let (cash, positions, realized_pnl, unrealized_pnl, equity, orders) =
+            match active_profile.mode {
+                trader_shared::ProfileMode::Live => {
+                    let live = self.inner.live.lock();
+                    let cash = live.cash;
+                    let positions: Vec<Position> = live.positions.values().cloned().collect();
+                    let orders: Vec<Order> = live.orders.values().cloned().collect();
                     let quotes_map = self.inner.quotes.read();
                     let unreal = compute_unrealized_pnl(&positions, &quotes_map);
-                    let equity = cash + compute_positions_value(&positions, &quotes_map);
-                    (cash, positions, realized, unreal, equity)
-                };
-                let orders: Vec<Order> = { self.inner.paper.lock().orders().values().cloned().collect() };
-                (cash, positions, realized_pnl, unrealized_pnl, equity, orders)
-            }
-        };
+                    let equity = if live.equity > 0.0 {
+                        live.equity
+                    } else {
+                        cash + compute_positions_value(&positions, &quotes_map)
+                    };
+                    (cash, positions, 0.0, unreal, equity, orders)
+                }
+                _ => {
+                    let (cash, positions, realized_pnl, unrealized_pnl, equity) = {
+                        let port = self.inner.portfolio.lock();
+                        let cash = port.cash;
+                        let positions: Vec<Position> = port.positions.values().cloned().collect();
+                        let realized = port.realized_pnl;
+                        let quotes_map = self.inner.quotes.read();
+                        let unreal = compute_unrealized_pnl(&positions, &quotes_map);
+                        let equity = cash + compute_positions_value(&positions, &quotes_map);
+                        (cash, positions, realized, unreal, equity)
+                    };
+                    let orders: Vec<Order> =
+                        { self.inner.paper.lock().orders().values().cloned().collect() };
+                    (
+                        cash,
+                        positions,
+                        realized_pnl,
+                        unrealized_pnl,
+                        equity,
+                        orders,
+                    )
+                }
+            };
 
         let strategies: Vec<RunningStrategyInfo> = {
             self.inner
@@ -856,7 +920,12 @@ impl EngineHandle {
         Ok(())
     }
 
-    pub async fn get_candles(&self, symbol: &str, interval_sec: u32, limit: usize) -> anyhow::Result<Vec<trader_shared::Candle>> {
+    pub async fn get_candles(
+        &self,
+        symbol: &str,
+        interval_sec: u32,
+        limit: usize,
+    ) -> anyhow::Result<Vec<trader_shared::Candle>> {
         let mode = self.inner.active_profile.read().mode;
         if matches!(mode, trader_shared::ProfileMode::Live) {
             let client = { self.inner.live.lock().client.clone() };
@@ -876,7 +945,11 @@ impl EngineHandle {
         }
     }
 
-    pub async fn place_order(&self, req: OrderRequest, trace_id: Option<Uuid>) -> anyhow::Result<Order> {
+    pub async fn place_order(
+        &self,
+        req: OrderRequest,
+        trace_id: Option<Uuid>,
+    ) -> anyhow::Result<Order> {
         self.place_order_inner(req, trace_id, None).await
     }
 
@@ -894,7 +967,10 @@ impl EngineHandle {
                 .ok_or_else(|| anyhow::anyhow!("unknown order_id: {order_id}"))?
         };
 
-        let _ = self.inner.event_tx.send(EngineEvent::OrderUpdated(order.clone()));
+        let _ = self
+            .inner
+            .event_tx
+            .send(EngineEvent::OrderUpdated(order.clone()));
         self.audit_info(
             "order_cancelled",
             serde_json::json!({"order_id": order_id, "order": order}),
@@ -928,7 +1004,15 @@ impl EngineHandle {
         let path = dir.join(fname);
 
         let mut wtr = csv::Writer::from_writer(vec![]);
-        wtr.write_record(["ts", "open", "high", "low", "close", "volume", "interval_sec"])?;
+        wtr.write_record([
+            "ts",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "interval_sec",
+        ])?;
         for c in candles {
             wtr.write_record([
                 c.ts.to_rfc3339(),
@@ -971,43 +1055,198 @@ impl EngineHandle {
         Ok(())
     }
 
-    pub async fn update_opend_config(&self, opend: trader_shared::OpenDConfig) -> anyhow::Result<()> {
+    pub async fn update_opend_config(
+        &self,
+        opend: trader_shared::OpenDConfig,
+    ) -> anyhow::Result<()> {
         {
             let mut ap = self.inner.active_profile.write();
             ap.opend = opend.clone();
         }
         self.persist_config().await?;
-        self.audit_info("opend_config_updated", serde_json::json!({"opend": opend}), None)
-            .await;
+        self.audit_info(
+            "opend_config_updated",
+            serde_json::json!({"opend": opend}),
+            None,
+        )
+        .await;
         // Re-apply connection side-effects (best-effort). If OpenD was connected, reconnect.
         self.disconnect_live().await;
         let _ = self.apply_profile_side_effects().await;
         Ok(())
     }
 
-    pub async fn update_opend_trade_env(&self, env: trader_shared::OpenDTradeEnv) -> anyhow::Result<()> {
+    pub async fn update_opend_trade_env(
+        &self,
+        env: trader_shared::OpenDTradeEnv,
+    ) -> anyhow::Result<()> {
         {
             let mut ap = self.inner.active_profile.write();
             ap.opend_trd_env = env;
         }
         self.persist_config().await?;
-        self.audit_info("opend_trade_env_updated", serde_json::json!({"env": format!("{env:?}")}), None)
-            .await;
+        self.audit_info(
+            "opend_trade_env_updated",
+            serde_json::json!({"env": format!("{env:?}")}),
+            None,
+        )
+        .await;
         // Reconnect to pick up the new environment.
         self.disconnect_live().await;
         let _ = self.apply_profile_side_effects().await;
         Ok(())
     }
 
-    pub async fn update_time_controls(&self, time_controls: trader_shared::TimeControls) -> anyhow::Result<()> {
+    pub async fn update_time_controls(
+        &self,
+        time_controls: trader_shared::TimeControls,
+    ) -> anyhow::Result<()> {
         {
             let mut ap = self.inner.active_profile.write();
             ap.time_controls = time_controls.clone();
         }
         self.persist_config().await?;
-        self.audit_info("time_controls_updated", serde_json::json!({"time_controls": time_controls}), None)
-            .await;
+        self.audit_info(
+            "time_controls_updated",
+            serde_json::json!({"time_controls": time_controls}),
+            None,
+        )
+        .await;
         Ok(())
+    }
+
+    pub async fn update_ai_provider(&self, provider: AiProviderConfig) -> anyhow::Result<()> {
+        let mut provider = provider;
+        provider.id = provider.id.trim().to_lowercase();
+        provider.base_url = provider.base_url.trim().to_string();
+        provider.model = provider.model.trim().to_string();
+        provider.api_key_secret = provider.api_key_secret.trim().to_string();
+        validate_ai_provider_config(&provider)?;
+        {
+            let mut ap = self.inner.active_profile.write();
+            ap.ai_providers
+                .insert(provider.id.clone(), provider.clone());
+            if ap.ai_router.primary.trim().is_empty() {
+                ap.ai_router.primary = provider.id.clone();
+            }
+        }
+        self.persist_config().await?;
+        self.audit_info(
+            "ai_provider_updated",
+            serde_json::json!({"provider": provider}),
+            None,
+        )
+        .await;
+        Ok(())
+    }
+
+    pub async fn update_ai_router(&self, mut router: AiRouterConfig) -> anyhow::Result<()> {
+        if router.primary.trim().is_empty() {
+            anyhow::bail!("ai router primary provider is empty");
+        }
+        router.primary = router.primary.trim().to_lowercase();
+
+        let mut dedup = Vec::new();
+        for id in router.fallbacks.into_iter() {
+            let id = id.trim().to_lowercase();
+            if id.is_empty() || id == router.primary {
+                continue;
+            }
+            if !dedup.iter().any(|x: &String| x == &id) {
+                dedup.push(id);
+            }
+        }
+        router.fallbacks = dedup;
+
+        {
+            let mut ap = self.inner.active_profile.write();
+            ap.ai_router = router.clone();
+        }
+        self.persist_config().await?;
+        self.audit_info(
+            "ai_router_updated",
+            serde_json::json!({"router": router}),
+            None,
+        )
+        .await;
+        Ok(())
+    }
+
+    pub async fn test_ai_provider(&self, provider_id: &str) -> anyhow::Result<AiSignalResponse> {
+        let provider_id = provider_id.trim().to_lowercase();
+        if provider_id.is_empty() {
+            anyhow::bail!("provider id is empty");
+        }
+
+        let symbol = self
+            .inner
+            .watchlist
+            .read()
+            .iter()
+            .next()
+            .cloned()
+            .unwrap_or_else(|| "US.AAPL".to_string());
+        let last_price = self
+            .inner
+            .quotes
+            .read()
+            .get(&symbol)
+            .map(|q| q.last)
+            .unwrap_or(100.0);
+
+        let req = AiSignalRequest {
+            symbol,
+            strategy_id: "ai_provider_test".to_string(),
+            proposed_side: trader_shared::OrderSide::Buy,
+            reason: "provider connectivity smoke test".to_string(),
+            last_price,
+            spread_bps: 3.0,
+            horizon_sec: 60,
+        };
+
+        let profile_name = self.inner.cfg.read().active_profile.clone();
+        let mut profile = self.inner.active_profile.read().clone();
+        profile.ai_router.primary = provider_id.clone();
+        profile.ai_router.fallbacks = Vec::new();
+
+        let resp = self
+            .inner
+            .model_api
+            .infer_signal(&profile_name, &profile, &req)
+            .await?;
+
+        self.audit_info(
+            "ai_provider_tested",
+            serde_json::json!({"provider_id": provider_id, "response": resp}),
+            None,
+        )
+        .await;
+        Ok(resp)
+    }
+
+    pub async fn generate_ai_signal(
+        &self,
+        req: AiSignalRequest,
+    ) -> anyhow::Result<AiSignalResponse> {
+        let mut req = req;
+        req.symbol = normalize_symbol(&req.symbol);
+        let resp = self.infer_ai_signal(req.clone()).await?;
+        self.audit_info(
+            "ai_signal_generated",
+            serde_json::json!({"request": req, "response": resp}),
+            None,
+        )
+        .await;
+        Ok(resp)
+    }
+
+    async fn infer_ai_signal(&self, req: AiSignalRequest) -> anyhow::Result<AiSignalResponse> {
+        let profile_name = self.inner.cfg.read().active_profile.clone();
+        let profile = self.inner.active_profile.read().clone();
+        self.inner
+            .model_api
+            .infer_signal(&profile_name, &profile, &req)
+            .await
     }
 
     pub async fn test_opend_connection(&self) -> anyhow::Result<()> {
@@ -1045,7 +1284,8 @@ impl EngineHandle {
 
     pub async fn start_strategy(&self, req: StartStrategyRequest) -> anyhow::Result<String> {
         let prof = self.inner.active_profile.read().clone();
-        if matches!(prof.mode, trader_shared::ProfileMode::Live) && req.strategy_id == "rhai_script" {
+        if matches!(prof.mode, trader_shared::ProfileMode::Live) && req.strategy_id == "rhai_script"
+        {
             anyhow::bail!("custom scripts are disabled in live mode");
         }
 
@@ -1054,7 +1294,10 @@ impl EngineHandle {
         let mut params = req.params.clone();
         if let Some(obj) = params.as_object_mut() {
             if let Some(sym) = obj.get("symbol").and_then(|v| v.as_str()) {
-                obj.insert("symbol".to_string(), serde_json::Value::String(normalize_symbol(sym)));
+                obj.insert(
+                    "symbol".to_string(),
+                    serde_json::Value::String(normalize_symbol(sym)),
+                );
             }
         }
 
@@ -1136,7 +1379,10 @@ impl EngineHandle {
         let cancelled_count = cancelled.len();
 
         for o in cancelled.iter() {
-            let _ = self.inner.event_tx.send(EngineEvent::OrderUpdated(o.clone()));
+            let _ = self
+                .inner
+                .event_tx
+                .send(EngineEvent::OrderUpdated(o.clone()));
         }
 
         // Best-effort cancel live orders if connected.
@@ -1147,7 +1393,13 @@ impl EngineHandle {
             let open: Vec<Order> = live
                 .orders
                 .values()
-                .filter(|o| matches!(o.status, trader_shared::OrderStatus::PendingSubmit | trader_shared::OrderStatus::Submitted))
+                .filter(|o| {
+                    matches!(
+                        o.status,
+                        trader_shared::OrderStatus::PendingSubmit
+                            | trader_shared::OrderStatus::Submitted
+                    )
+                })
                 .cloned()
                 .collect();
             (client, headers, open)
@@ -1155,13 +1407,18 @@ impl EngineHandle {
         let live_open_count = live_open_orders.len();
         if let Some(client) = live_client {
             for o in live_open_orders {
-                if let Some(header) = live_headers.get(&trd_market_from_symbol(&o.symbol)).cloned() {
+                if let Some(header) = live_headers
+                    .get(&trd_market_from_symbol(&o.symbol))
+                    .cloned()
+                {
                     let _ = client.trd_cancel_order(header, o.id.clone()).await;
                 }
             }
         }
 
-        let _ = self.inner.event_tx.send(EngineEvent::RiskHalt { reason: reason.clone() });
+        let _ = self.inner.event_tx.send(EngineEvent::RiskHalt {
+            reason: reason.clone(),
+        });
         self.audit_info(
             "kill_switch",
             serde_json::json!({"reason": reason, "cancelled_paper_orders": cancelled_count, "cancelled_live_orders_attempted": live_open_count}),
@@ -1173,7 +1430,7 @@ impl EngineHandle {
 
     pub async fn resume(&self) -> anyhow::Result<()> {
         if self.inner.safe_mode {
-            anyhow::bail!("safe mode is active (restart after clearing crash marker)" );
+            anyhow::bail!("safe mode is active (restart after clearing crash marker)");
         }
         self.inner.kill_switch.store(false, Ordering::Relaxed);
         {
@@ -1194,8 +1451,12 @@ impl EngineHandle {
             self.inner.risk.lock().update_limits(limits.clone());
         }
         self.persist_config().await?;
-        self.audit_info("risk_limits_updated", serde_json::json!({"limits": limits}), None)
-            .await;
+        self.audit_info(
+            "risk_limits_updated",
+            serde_json::json!({"limits": limits}),
+            None,
+        )
+        .await;
         Ok(())
     }
 
@@ -1214,8 +1475,12 @@ impl EngineHandle {
             self.inner.risk.lock().update_limits(new_prof.risk.clone());
         }
         config::save(&self.inner.paths, &cfg).await?;
-        self.audit_info("profile_changed", serde_json::json!({"profile": profile}), None)
-            .await;
+        self.audit_info(
+            "profile_changed",
+            serde_json::json!({"profile": profile}),
+            None,
+        )
+        .await;
         // Apply data-source side-effects (connect/disconnect OpenD, switch mock feed).
         self.apply_profile_side_effects().await?;
         Ok(())
@@ -1225,7 +1490,10 @@ impl EngineHandle {
         self.inner.state_db.list_strategy_defs().await
     }
 
-    pub async fn upsert_strategy_def(&self, req: StrategyUpsertRequest) -> anyhow::Result<StrategyDefinition> {
+    pub async fn upsert_strategy_def(
+        &self,
+        req: StrategyUpsertRequest,
+    ) -> anyhow::Result<StrategyDefinition> {
         if req.name.trim().is_empty() {
             anyhow::bail!("name is empty");
         }
@@ -1236,7 +1504,10 @@ impl EngineHandle {
         let mut params = req.params.clone();
         if let Some(obj) = params.as_object_mut() {
             if let Some(sym) = obj.get("symbol").and_then(|v| v.as_str()) {
-                obj.insert("symbol".to_string(), serde_json::Value::String(normalize_symbol(sym)));
+                obj.insert(
+                    "symbol".to_string(),
+                    serde_json::Value::String(normalize_symbol(sym)),
+                );
             }
         }
 
@@ -1259,13 +1530,20 @@ impl EngineHandle {
         };
 
         let saved = self.inner.state_db.upsert_strategy_def(def).await?;
-        self.audit_info("strategy_def_upserted", serde_json::json!({"strategy": saved}), None)
-            .await;
+        self.audit_info(
+            "strategy_def_upserted",
+            serde_json::json!({"strategy": saved}),
+            None,
+        )
+        .await;
         Ok(saved)
     }
 
     pub async fn delete_strategy_def(&self, id: &str) -> anyhow::Result<()> {
-        self.inner.state_db.delete_strategy_def(id.to_string()).await?;
+        self.inner
+            .state_db
+            .delete_strategy_def(id.to_string())
+            .await?;
         self.audit_info("strategy_def_deleted", serde_json::json!({"id": id}), None)
             .await;
         Ok(())
@@ -1281,7 +1559,9 @@ impl EngineHandle {
 
         // Extra guard: only allow running live-lifecycle strategies in live profile.
         let prof = self.inner.active_profile.read().clone();
-        if matches!(def.lifecycle, StrategyLifecycle::Live) && !matches!(prof.mode, trader_shared::ProfileMode::Live) {
+        if matches!(def.lifecycle, StrategyLifecycle::Live)
+            && !matches!(prof.mode, trader_shared::ProfileMode::Live)
+        {
             anyhow::bail!("strategy lifecycle is live, but active profile is not live");
         }
 
@@ -1296,7 +1576,10 @@ impl EngineHandle {
         self.inner.state_db.list_models().await
     }
 
-    pub async fn register_model(&self, req: ModelRegisterRequest) -> anyhow::Result<RegisteredModel> {
+    pub async fn register_model(
+        &self,
+        req: ModelRegisterRequest,
+    ) -> anyhow::Result<RegisteredModel> {
         if req.name.trim().is_empty() {
             anyhow::bail!("name is empty");
         }
@@ -1316,10 +1599,14 @@ impl EngineHandle {
                 // Ensure the builtin model exists and params are valid.
                 let mut m = trader_models::create_model(&req.base_id)
                     .with_context(|| format!("unknown builtin model: {}", req.base_id))?;
-                m.set_params(req.params.clone()).context("invalid model params")?;
+                m.set_params(req.params.clone())
+                    .context("invalid model params")?;
 
-                let params_str = serde_json::to_string(&req.params).unwrap_or_else(|_| "{}".to_string());
-                let checksum = sha256_hex(format!("builtin|{}|{}|{}", req.base_id, req.version, params_str).as_bytes());
+                let params_str =
+                    serde_json::to_string(&req.params).unwrap_or_else(|_| "{}".to_string());
+                let checksum = sha256_hex(
+                    format!("builtin|{}|{}|{}", req.base_id, req.version, params_str).as_bytes(),
+                );
                 (None, checksum)
             }
             ModelKind::Onnx => {
@@ -1336,9 +1623,13 @@ impl EngineHandle {
                 tokio::fs::create_dir_all(&dir).await.ok();
                 let fname = format!("model_{}.onnx", id.replace('-', ""));
                 let dst_path = dir.join(fname);
-                tokio::fs::copy(&src_path, &dst_path).await.context("copy model artifact")?;
+                tokio::fs::copy(&src_path, &dst_path)
+                    .await
+                    .context("copy model artifact")?;
 
-                let bytes = tokio::fs::read(&dst_path).await.context("read copied model artifact")?;
+                let bytes = tokio::fs::read(&dst_path)
+                    .await
+                    .context("read copied model artifact")?;
                 let checksum = sha256_hex(&bytes);
                 (Some(dst_path.to_string_lossy().to_string()), checksum)
             }
@@ -1361,8 +1652,12 @@ impl EngineHandle {
         };
 
         let saved = self.inner.state_db.upsert_model(m).await?;
-        self.audit_info("model_registered", serde_json::json!({"model": saved}), None)
-            .await;
+        self.audit_info(
+            "model_registered",
+            serde_json::json!({"model": saved}),
+            None,
+        )
+        .await;
         Ok(saved)
     }
 
@@ -1383,14 +1678,25 @@ impl EngineHandle {
         Ok(())
     }
 
-    pub async fn evaluate_model(&self, params: ModelEvalParams) -> anyhow::Result<ModelEvalRunResult> {
+    pub async fn evaluate_model(
+        &self,
+        params: ModelEvalParams,
+    ) -> anyhow::Result<ModelEvalRunResult> {
         let started_at = Utc::now();
-        let Some(model) = self.inner.state_db.get_model(params.model_id.clone()).await? else {
+        let Some(model) = self
+            .inner
+            .state_db
+            .get_model(params.model_id.clone())
+            .await?
+        else {
             anyhow::bail!("unknown model_id: {}", params.model_id);
         };
 
-        let candles = backtest::load_candles_csv(std::path::Path::new(&params.candles_csv_path), &params.symbol)
-            .context("load candles csv")?;
+        let candles = backtest::load_candles_csv(
+            std::path::Path::new(&params.candles_csv_path),
+            &params.symbol,
+        )
+        .context("load candles csv")?;
 
         let metrics = evaluate_model_on_candles(&model, &candles).context("evaluate model")?;
         let finished_at = Utc::now();
@@ -1445,7 +1751,10 @@ impl EngineHandle {
         event_type: Option<String>,
         trace_id: Option<String>,
     ) -> anyhow::Result<Vec<crate::audit::AuditEventRow>> {
-        self.inner.audit.list(limit, offset, event_type, trace_id).await
+        self.inner
+            .audit
+            .list(limit, offset, event_type, trace_id)
+            .await
     }
 
     pub async fn export_audit_jsonl(&self) -> anyhow::Result<String> {
@@ -1459,7 +1768,10 @@ impl EngineHandle {
         Ok(out.to_string_lossy().to_string())
     }
 
-    pub async fn run_backtest(&self, params: BacktestParams) -> anyhow::Result<(BacktestReport, String, String)> {
+    pub async fn run_backtest(
+        &self,
+        params: BacktestParams,
+    ) -> anyhow::Result<(BacktestReport, String, String)> {
         let report = backtest::run_backtest(params)?;
 
         let id = Uuid::new_v4().to_string();
@@ -1533,7 +1845,9 @@ impl EngineHandle {
         }
 
         // Dry-run connectivity test: full OpenD handshake + basic state query on the *live* connection.
-        self.ensure_live_connected().await.context("OpenD connect failed")?;
+        self.ensure_live_connected()
+            .await
+            .context("OpenD connect failed")?;
         let client = { self.inner.live.lock().client.clone() };
         let Some(client) = client else {
             anyhow::bail!("OpenD is not connected after connect attempt");
@@ -1545,7 +1859,9 @@ impl EngineHandle {
             .context("OpenD get_global_state failed")?;
 
         // Unlock OpenD trading (requires trade password).
-        self.live_unlock_trade(&client).await.context("OpenD unlock trade failed")?;
+        self.live_unlock_trade(&client)
+            .await
+            .context("OpenD unlock trade failed")?;
         self.inner.live.lock().trade_unlocked = true;
 
         {
@@ -1562,7 +1878,8 @@ impl EngineHandle {
     async fn persist_config(&self) -> anyhow::Result<()> {
         let mut cfg = self.inner.cfg.write().clone();
         let active_name = cfg.active_profile.clone();
-        cfg.profiles.insert(active_name, self.inner.active_profile.read().clone());
+        cfg.profiles
+            .insert(active_name, self.inner.active_profile.read().clone());
         *self.inner.cfg.write() = cfg.clone();
         config::save(&self.inner.paths, &cfg).await
     }
@@ -1586,7 +1903,7 @@ impl EngineHandle {
         };
 
         // Run strategies without awaiting while holding the lock.
-        let signals: Vec<(Uuid, String, trader_shared::Signal)> = {
+        let signals: Vec<(Uuid, String, serde_json::Value, trader_shared::Signal)> = {
             let mut out = Vec::new();
             let mut s = self.inner.strategies.lock();
             for inst in s.iter_mut() {
@@ -1602,13 +1919,13 @@ impl EngineHandle {
                 };
                 let sigs = inst.strategy.on_bar(&ctx, &candle);
                 for sig in sigs {
-                    out.push((trace_id, inst.strategy_id.clone(), sig));
+                    out.push((trace_id, inst.strategy_id.clone(), inst.params.clone(), sig));
                 }
             }
             out
         };
 
-        for (trace_id, strategy_id, sig) in signals {
+        for (trace_id, strategy_id, strategy_params, sig) in signals {
             let _ = self.inner.event_tx.send(EngineEvent::SignalFired {
                 ts: candle.ts,
                 trace_id,
@@ -1631,10 +1948,110 @@ impl EngineHandle {
                 Some(trace_id),
             )
             .await;
+
+            if !self
+                .signal_allowed_by_ai_gate(
+                    trace_id,
+                    &strategy_id,
+                    &strategy_params,
+                    &sig,
+                    &candle,
+                    quote.as_ref(),
+                )
+                .await
+            {
+                continue;
+            }
             let _ = self
                 .place_order_inner(sig.order, Some(trace_id), Some(sig.reason))
                 .await;
         }
+    }
+
+    async fn signal_allowed_by_ai_gate(
+        &self,
+        trace_id: Uuid,
+        strategy_id: &str,
+        strategy_params: &serde_json::Value,
+        signal: &trader_shared::Signal,
+        candle: &trader_shared::Candle,
+        quote: Option<&Quote>,
+    ) -> bool {
+        // Apply model API confirmation only to the short-term strategy when explicitly enabled.
+        if strategy_id != "short_term_momentum_bot" {
+            return true;
+        }
+        let ai_confirm = strategy_params
+            .get("ai_confirm")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        if !ai_confirm {
+            return true;
+        }
+
+        let min_ai_conf = strategy_params
+            .get("min_ai_confidence")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.65)
+            .clamp(0.0, 1.0);
+        let horizon_sec = strategy_params
+            .get("horizon_sec")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(60) as u32;
+
+        let spread_bps = quote
+            .and_then(|q| {
+                if q.last <= 0.0 {
+                    return None;
+                }
+                Some(((q.ask - q.bid).max(0.0) / q.last) * 10_000.0)
+            })
+            .unwrap_or(0.0);
+
+        let req = AiSignalRequest {
+            symbol: candle.symbol.clone(),
+            strategy_id: strategy_id.to_string(),
+            proposed_side: signal.order.side,
+            reason: signal.reason.clone(),
+            last_price: candle.close,
+            spread_bps,
+            horizon_sec,
+        };
+
+        let resp = match self.infer_ai_signal(req.clone()).await {
+            Ok(r) => r,
+            Err(err) => {
+                self.audit_info(
+                    "signal_ai_gate_error",
+                    serde_json::json!({"strategy_id": strategy_id, "request": req, "error": err.to_string()}),
+                    Some(trace_id),
+                )
+                .await;
+                return false;
+            }
+        };
+
+        let expected = order_side_to_ai_action(signal.order.side);
+        let action_match = resp.action == expected;
+        let confidence_ok = resp.confidence >= min_ai_conf;
+        let allowed = action_match && confidence_ok;
+
+        self.audit_info(
+            "signal_ai_gate",
+            serde_json::json!({
+                "strategy_id": strategy_id,
+                "allowed": allowed,
+                "min_ai_confidence": min_ai_conf,
+                "action_match": action_match,
+                "confidence_ok": confidence_ok,
+                "request": req,
+                "response": resp,
+            }),
+            Some(trace_id),
+        )
+        .await;
+
+        allowed
     }
 
     async fn place_order_inner(
@@ -1702,7 +2119,10 @@ impl EngineHandle {
             paper.place_order(now, req, &last_quote)
         };
 
-        let _ = self.inner.event_tx.send(EngineEvent::OrderUpdated(order.clone()));
+        let _ = self
+            .inner
+            .event_tx
+            .send(EngineEvent::OrderUpdated(order.clone()));
 
         if let Some(fill) = fill {
             self.inner.metrics.inc_fill();
@@ -1734,13 +2154,17 @@ impl EngineHandle {
                 port.day_start_equity = equity;
             }
 
-            let mut pos = port.positions.get(&fill.symbol).cloned().unwrap_or(Position {
-                symbol: fill.symbol.clone(),
-                qty: 0,
-                avg_cost: 0.0,
-                realized_pnl: 0.0,
-                updated_at: fill.ts,
-            });
+            let mut pos = port
+                .positions
+                .get(&fill.symbol)
+                .cloned()
+                .unwrap_or(Position {
+                    symbol: fill.symbol.clone(),
+                    qty: 0,
+                    avg_cost: 0.0,
+                    realized_pnl: 0.0,
+                    updated_at: fill.ts,
+                });
 
             match fill.side {
                 trader_shared::OrderSide::Buy => {
@@ -1798,7 +2222,12 @@ impl EngineHandle {
         }
     }
 
-    async fn audit_info(&self, event_type: &str, payload: serde_json::Value, trace_id: Option<Uuid>) {
+    async fn audit_info(
+        &self,
+        event_type: &str,
+        payload: serde_json::Value,
+        trace_id: Option<Uuid>,
+    ) {
         let _ = self
             .inner
             .audit
@@ -1816,9 +2245,7 @@ async fn write_crash_marker(paths: &AppPaths) -> anyhow::Result<()> {
 
 pub async fn clear_crash_marker(paths: &AppPaths) -> anyhow::Result<()> {
     if paths.crash_marker_path.exists() {
-        tokio::fs::remove_file(&paths.crash_marker_path)
-            .await
-            .ok();
+        tokio::fs::remove_file(&paths.crash_marker_path).await.ok();
     }
     Ok(())
 }
@@ -1890,7 +2317,9 @@ fn evaluate_model_on_candles(
 
             for i in 1..(candles.len() - 1) {
                 let window = &candles[..=i];
-                let Some(score) = m.compute(window)? else { continue };
+                let Some(score) = m.compute(window)? else {
+                    continue;
+                };
 
                 let p0 = candles[i].close.max(0.0000001);
                 let p1 = candles[i + 1].close;
@@ -2081,7 +2510,10 @@ fn render_model_eval_html(report: &ModelEvalReport, model: &RegisteredModel) -> 
 </body>
 </html>"#,
         name = escape_html(&model.name),
-        kind = match model.kind { ModelKind::Builtin => "builtin", ModelKind::Onnx => "onnx" },
+        kind = match model.kind {
+            ModelKind::Builtin => "builtin",
+            ModelKind::Onnx => "onnx",
+        },
         base_id = escape_html(&model.base_id),
         version = escape_html(&model.version),
         checksum = escape_html(&model.checksum),
@@ -2114,7 +2546,10 @@ fn compute_positions_value(positions: &[Position], quotes: &BTreeMap<String, Quo
         .sum()
 }
 
-fn compute_positions_value_map(positions: &BTreeMap<String, Position>, quotes: &BTreeMap<String, Quote>) -> f64 {
+fn compute_positions_value_map(
+    positions: &BTreeMap<String, Position>,
+    quotes: &BTreeMap<String, Quote>,
+) -> f64 {
     positions
         .values()
         .map(|p| {
@@ -2197,6 +2632,40 @@ fn floor_time(ts: DateTime<Utc>, interval_sec: u32) -> DateTime<Utc> {
     let secs = ts.timestamp();
     let bucket = secs - (secs % interval_sec as i64);
     DateTime::<Utc>::from_timestamp(bucket, 0).unwrap_or(ts)
+}
+
+fn validate_ai_provider_config(provider: &AiProviderConfig) -> anyhow::Result<()> {
+    if provider.id.trim().is_empty() {
+        anyhow::bail!("provider id is empty");
+    }
+    if provider.base_url.trim().is_empty() {
+        anyhow::bail!("provider base_url is empty");
+    }
+    if provider.model.trim().is_empty() {
+        anyhow::bail!("provider model is empty");
+    }
+    if provider.timeout_ms < 500 || provider.timeout_ms > 120_000 {
+        anyhow::bail!("provider timeout_ms out of range [500, 120000]");
+    }
+    if provider.max_tokens == 0 || provider.max_tokens > 32_768 {
+        anyhow::bail!("provider max_tokens out of range");
+    }
+    if !(0.0..=2.0).contains(&provider.temperature) {
+        anyhow::bail!("provider temperature out of range [0, 2]");
+    }
+    if !matches!(provider.kind, trader_shared::AiProviderKind::Ollama)
+        && provider.api_key_secret.trim().is_empty()
+    {
+        anyhow::bail!("api_key_secret is required for non-ollama providers");
+    }
+    Ok(())
+}
+
+fn order_side_to_ai_action(side: trader_shared::OrderSide) -> AiTradeAction {
+    match side {
+        trader_shared::OrderSide::Buy => AiTradeAction::Buy,
+        trader_shared::OrderSide::Sell => AiTradeAction::Sell,
+    }
 }
 
 fn sanitize_symbol(symbol: &str) -> String {

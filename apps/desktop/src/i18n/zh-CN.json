@@ -213,7 +213,14 @@
     "metrics_ic": "IC",
     "metrics_acc": "准确率",
     "open_json": "打开 JSON",
-    "open_html": "打开 HTML"
+    "open_html": "打开 HTML",
+    "ai_signal_title": "AI 信号工作台",
+    "ai_signal_help": "通过已配置的模型路由（OpenAI/DeepSeek/千问/Grok/Ollama）执行短周期信号评估；不确定时默认 hold/不交易。",
+    "ai_horizon": "持有周期（秒）",
+    "ai_reason": "上下文",
+    "ai_run": "生成 AI 信号",
+    "ai_action": "动作",
+    "ai_confidence": "置信度"
   },
   "backtest": {
     "runner": "回测运行器",
@@ -342,7 +349,25 @@
     "live_unlocked_alert": "已解锁实盘交易（流程完成）。",
     "live_warning": "重要：实盘模式可能发送真实订单。如有任何异常，请立即触发紧急停止。",
     "language": "语言",
-    "language_hint": "界面语言偏好（本地保存）。"
+    "language_hint": "界面语言偏好（本地保存）。",
+    "ai_models": "模型 API 路由",
+    "ai_badge": "多提供商路由 + 不确定默认 hold",
+    "ai_help": "配置模型 API 提供商与路由顺序。仅在 API Key 与风控验证完成后再启用。",
+    "ai_provider": "提供商",
+    "ai_kind": "提供商类型",
+    "ai_secret_key": "API 密钥名",
+    "base_url": "基础地址",
+    "ai_model": "模型",
+    "ai_timeout_ms": "超时（毫秒）",
+    "ai_max_tokens": "最大 Token",
+    "ai_temp": "温度",
+    "ai_primary": "主提供商",
+    "ai_fallbacks": "备用提供商",
+    "ai_fallbacks_hint": "逗号分隔 provider id，例如 deepseek,qwen,grok,ollama",
+    "ai_test_provider": "测试提供商",
+    "ai_save_provider": "保存提供商",
+    "ai_save_router": "保存路由",
+    "ai_test_result": "测试结果"
   },
   "catalog": {
     "strategy": {
@@ -357,6 +382,10 @@
       "rhai_script": {
         "name": "自定义脚本（Rhai）",
         "description": "沙箱化自定义策略脚本（实盘模式禁用）。"
+      },
+      "short_term_momentum_bot": {
+        "name": "短线动量机器人",
+        "description": "短周期动量入场，配合止盈/止损/持仓时限出场，并支持可选 AI 复核门禁。"
       }
     },
     "model": {

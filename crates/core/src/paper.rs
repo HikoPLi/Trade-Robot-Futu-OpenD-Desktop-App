@@ -125,7 +125,10 @@ impl PaperExecution {
 
     pub fn cancel_order(&mut self, now: DateTime<Utc>, order_id: &str) -> Option<Order> {
         let mut o = self.orders.get(order_id).cloned()?;
-        if matches!(o.status, OrderStatus::Filled | OrderStatus::Cancelled | OrderStatus::Rejected) {
+        if matches!(
+            o.status,
+            OrderStatus::Filled | OrderStatus::Cancelled | OrderStatus::Rejected
+        ) {
             return Some(o);
         }
         o.status = OrderStatus::Cancelled;
@@ -152,11 +155,16 @@ impl PaperExecution {
         let mut filled = Vec::new();
 
         for id in ids {
-            let Some(mut o) = self.orders.get(&id).cloned() else { continue };
+            let Some(mut o) = self.orders.get(&id).cloned() else {
+                continue;
+            };
             if o.symbol != quote.symbol {
                 continue;
             }
-            if !matches!(o.status, OrderStatus::Submitted | OrderStatus::PendingSubmit) {
+            if !matches!(
+                o.status,
+                OrderStatus::Submitted | OrderStatus::PendingSubmit
+            ) {
                 self.open_limit_orders.remove(&id);
                 continue;
             }

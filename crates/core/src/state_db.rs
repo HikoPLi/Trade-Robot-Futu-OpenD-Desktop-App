@@ -2,9 +2,7 @@ use crate::paths::AppPaths;
 use anyhow::Context;
 use chrono::{DateTime, Utc};
 use tokio_rusqlite::{rusqlite, Connection};
-use trader_shared::{
-    ModelKind, RegisteredModel, StrategyDefinition, StrategyLifecycle,
-};
+use trader_shared::{ModelKind, RegisteredModel, StrategyDefinition, StrategyLifecycle};
 
 #[derive(Debug, Clone)]
 pub struct ModelEvalRow {
@@ -190,7 +188,8 @@ CREATE INDEX IF NOT EXISTS model_evals_model_idx ON model_evals(model_id);
         let id = def.id.clone();
         let name = def.name.clone();
         let strategy_id = def.strategy_id.clone();
-        let params_json = serde_json::to_string(&def.params).context("serialize strategy params")?;
+        let params_json =
+            serde_json::to_string(&def.params).context("serialize strategy params")?;
         let lifecycle = match def.lifecycle {
             StrategyLifecycle::Draft => "draft",
             StrategyLifecycle::Paper => "paper",

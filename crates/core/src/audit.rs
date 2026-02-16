@@ -3,8 +3,8 @@ use anyhow::Context;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use tokio_rusqlite::Connection;
 use tokio_rusqlite::rusqlite;
+use tokio_rusqlite::Connection;
 use trader_shared::TraceId;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -217,7 +217,13 @@ CREATE INDEX IF NOT EXISTS audit_events_trace_idx ON audit_events(trace_id);
     }
 }
 
-fn compute_hash(prev_hash: Option<&str>, ts: &str, event_type: &str, trace_id: Option<&str>, payload: &str) -> String {
+fn compute_hash(
+    prev_hash: Option<&str>,
+    ts: &str,
+    event_type: &str,
+    trace_id: Option<&str>,
+    payload: &str,
+) -> String {
     let mut hasher = Sha256::new();
     if let Some(prev) = prev_hash {
         hasher.update(prev.as_bytes());

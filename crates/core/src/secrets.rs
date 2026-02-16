@@ -7,6 +7,13 @@ pub const ALLOWED_SECRET_KEYS: &[&str] = &[
     "futu.trade_password",
     "futu.api_token",
     "opend.tls_client_key_passphrase",
+    // Model API providers.
+    "ai.openai_api_key",
+    "ai.deepseek_api_key",
+    "ai.qwen_api_key",
+    "ai.grok_api_key",
+    "ai.ollama_api_key",
+    "ai.custom_api_key",
 ];
 
 fn validate_key(key: &str) -> anyhow::Result<()> {
@@ -30,8 +37,8 @@ pub async fn set_secret(profile: String, key: String, value: String) -> anyhow::
     }
 
     tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
-        let entry = keyring::Entry::new(SERVICE, &username(&profile, &key))
-            .context("keyring entry")?;
+        let entry =
+            keyring::Entry::new(SERVICE, &username(&profile, &key)).context("keyring entry")?;
         entry.set_password(&value).context("set password")?;
         Ok(())
     })
@@ -44,8 +51,8 @@ pub async fn set_secret(profile: String, key: String, value: String) -> anyhow::
 pub async fn clear_secret(profile: String, key: String) -> anyhow::Result<()> {
     validate_key(&key)?;
     tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
-        let entry = keyring::Entry::new(SERVICE, &username(&profile, &key))
-            .context("keyring entry")?;
+        let entry =
+            keyring::Entry::new(SERVICE, &username(&profile, &key)).context("keyring entry")?;
         match entry.delete_password() {
             Ok(()) => Ok(()),
             Err(e) => {
@@ -65,8 +72,8 @@ pub async fn clear_secret(profile: String, key: String) -> anyhow::Result<()> {
 pub async fn secret_exists(profile: String, key: String) -> anyhow::Result<bool> {
     validate_key(&key)?;
     tokio::task::spawn_blocking(move || -> anyhow::Result<bool> {
-        let entry = keyring::Entry::new(SERVICE, &username(&profile, &key))
-            .context("keyring entry")?;
+        let entry =
+            keyring::Entry::new(SERVICE, &username(&profile, &key)).context("keyring entry")?;
         match entry.get_password() {
             Ok(_) => Ok(true),
             Err(e) => {
@@ -84,8 +91,8 @@ pub async fn secret_exists(profile: String, key: String) -> anyhow::Result<bool>
 pub async fn get_secret(profile: String, key: String) -> anyhow::Result<Option<String>> {
     validate_key(&key)?;
     tokio::task::spawn_blocking(move || -> anyhow::Result<Option<String>> {
-        let entry = keyring::Entry::new(SERVICE, &username(&profile, &key))
-            .context("keyring entry")?;
+        let entry =
+            keyring::Entry::new(SERVICE, &username(&profile, &key)).context("keyring entry")?;
         match entry.get_password() {
             Ok(v) => Ok(Some(v)),
             Err(e) => {

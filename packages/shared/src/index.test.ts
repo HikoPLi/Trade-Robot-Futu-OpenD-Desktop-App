@@ -35,6 +35,23 @@ describe("@trade-robot/shared schemas", () => {
       },
       live_trading_unlocked: false,
       kill_switch_hotkey: "CmdOrCtrl+Alt+K",
+      ai_router: {
+        primary: "openai",
+        fallbacks: ["deepseek"],
+      },
+      ai_providers: {
+        openai: {
+          id: "openai",
+          kind: "openai",
+          enabled: false,
+          base_url: "https://api.openai.com/v1",
+          model: "gpt-4o-mini",
+          api_key_secret: "ai.openai_api_key",
+          timeout_ms: 6000,
+          max_tokens: 180,
+          temperature: 0,
+        },
+      },
     });
     expect(p.mode).toBe("paper");
     expect(p.opend.port).toBe(11111);
@@ -65,6 +82,23 @@ describe("@trade-robot/shared schemas", () => {
           },
           live_trading_unlocked: false,
           kill_switch_hotkey: "CmdOrCtrl+Alt+K",
+          ai_router: {
+            primary: "openai",
+            fallbacks: ["deepseek"],
+          },
+          ai_providers: {
+            openai: {
+              id: "openai",
+              kind: "openai",
+              enabled: false,
+              base_url: "https://api.openai.com/v1",
+              model: "gpt-4o-mini",
+              api_key_secret: "ai.openai_api_key",
+              timeout_ms: 6000,
+              max_tokens: 180,
+              temperature: 0,
+            },
+          },
         },
       },
     });

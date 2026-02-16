@@ -3,9 +3,10 @@ use tauri::{AppHandle, State};
 use tauri_plugin_global_shortcut::GlobalShortcutExt;
 use trader_core::{EngineSnapshot, StartStrategyRequest};
 use trader_shared::{
-    BacktestParams, ModelEvalParams, ModelEvalRunResult, ModelRegisterRequest, OpenDConfig,
-    OpenDTradeEnv, Order, OrderRequest, RegisteredModel, RiskLimits, StrategyDefinition,
-    StrategyUpsertRequest, TimeControls,
+    AiProviderConfig, AiRouterConfig, AiSignalRequest, AiSignalResponse, BacktestParams,
+    ModelEvalParams, ModelEvalRunResult, ModelRegisterRequest, OpenDConfig, OpenDTradeEnv, Order,
+    OrderRequest, RegisteredModel, RiskLimits, StrategyDefinition, StrategyUpsertRequest,
+    TimeControls,
 };
 
 #[tauri::command]
@@ -14,7 +15,10 @@ pub async fn engine_snapshot(state: State<'_, AppState>) -> Result<EngineSnapsho
 }
 
 #[tauri::command]
-pub async fn engine_set_watchlist(state: State<'_, AppState>, symbols: Vec<String>) -> Result<(), String> {
+pub async fn engine_set_watchlist(
+    state: State<'_, AppState>,
+    symbols: Vec<String>,
+) -> Result<(), String> {
     state
         .engine
         .set_watchlist(symbols)
@@ -37,7 +41,10 @@ pub async fn engine_get_candles(
 }
 
 #[tauri::command]
-pub async fn engine_place_order(state: State<'_, AppState>, req: OrderRequest) -> Result<Order, String> {
+pub async fn engine_place_order(
+    state: State<'_, AppState>,
+    req: OrderRequest,
+) -> Result<Order, String> {
     state
         .engine
         .place_order(req, None)
@@ -46,7 +53,10 @@ pub async fn engine_place_order(state: State<'_, AppState>, req: OrderRequest) -
 }
 
 #[tauri::command]
-pub async fn engine_cancel_order(state: State<'_, AppState>, order_id: String) -> Result<Order, String> {
+pub async fn engine_cancel_order(
+    state: State<'_, AppState>,
+    order_id: String,
+) -> Result<Order, String> {
     state
         .engine
         .cancel_order(&order_id)
@@ -69,7 +79,10 @@ pub async fn engine_generate_sample_candles_csv(
 }
 
 #[tauri::command]
-pub async fn engine_update_opend_config(state: State<'_, AppState>, opend: OpenDConfig) -> Result<(), String> {
+pub async fn engine_update_opend_config(
+    state: State<'_, AppState>,
+    opend: OpenDConfig,
+) -> Result<(), String> {
     state
         .engine
         .update_opend_config(opend)
@@ -102,16 +115,69 @@ pub async fn engine_update_time_controls(
 }
 
 #[tauri::command]
-pub async fn engine_test_opend_connection(state: State<'_, AppState>) -> Result<(), String> {
-    state.engine.test_opend_connection().await.map_err(|e| e.to_string())
+pub async fn engine_update_ai_provider(
+    state: State<'_, AppState>,
+    provider: AiProviderConfig,
+) -> Result<(), String> {
+    state
+        .engine
+        .update_ai_provider(provider)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn engine_secret_status(
+pub async fn engine_update_ai_router(
     state: State<'_, AppState>,
-    key: String,
-) -> Result<bool, String> {
-    state.engine.secret_status(&key).await.map_err(|e| e.to_string())
+    router: AiRouterConfig,
+) -> Result<(), String> {
+    state
+        .engine
+        .update_ai_router(router)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn engine_test_ai_provider(
+    state: State<'_, AppState>,
+    provider_id: String,
+) -> Result<AiSignalResponse, String> {
+    state
+        .engine
+        .test_ai_provider(&provider_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn engine_generate_ai_signal(
+    state: State<'_, AppState>,
+    req: AiSignalRequest,
+) -> Result<AiSignalResponse, String> {
+    state
+        .engine
+        .generate_ai_signal(req)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn engine_test_opend_connection(state: State<'_, AppState>) -> Result<(), String> {
+    state
+        .engine
+        .test_opend_connection()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn engine_secret_status(state: State<'_, AppState>, key: String) -> Result<bool, String> {
+    state
+        .engine
+        .secret_status(&key)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -128,10 +194,7 @@ pub async fn engine_set_secret(
 }
 
 #[tauri::command]
-pub async fn engine_clear_secret(
-    state: State<'_, AppState>,
-    key: String,
-) -> Result<(), String> {
+pub async fn engine_clear_secret(state: State<'_, AppState>, key: String) -> Result<(), String> {
     state
         .engine
         .clear_secret(&key)
@@ -166,7 +229,12 @@ pub async fn engine_set_kill_switch_hotkey(
     .map_err(|e| e.to_string())?;
 
     // Best-effort unregister old shortcut.
-    let old_hotkey = state.engine.snapshot().await.active_profile.kill_switch_hotkey;
+    let old_hotkey = state
+        .engine
+        .snapshot()
+        .await
+        .active_profile
+        .kill_switch_hotkey;
     if let Ok(old_shortcut) = old_hotkey.parse::<tauri_plugin_global_shortcut::Shortcut>() {
         if old_shortcut.id() != shortcut.id() {
             let _ = mgr.unregister(old_shortcut);
@@ -185,11 +253,18 @@ pub async fn engine_start_strategy(
     state: State<'_, AppState>,
     req: StartStrategyRequest,
 ) -> Result<String, String> {
-    state.engine.start_strategy(req).await.map_err(|e| e.to_string())
+    state
+        .engine
+        .start_strategy(req)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn engine_stop_strategy(state: State<'_, AppState>, instance_id: String) -> Result<(), String> {
+pub async fn engine_stop_strategy(
+    state: State<'_, AppState>,
+    instance_id: String,
+) -> Result<(), String> {
     state
         .engine
         .stop_strategy(&instance_id)
@@ -198,12 +273,22 @@ pub async fn engine_stop_strategy(state: State<'_, AppState>, instance_id: Strin
 }
 
 #[tauri::command]
-pub async fn engine_engage_kill_switch(state: State<'_, AppState>, reason: String) -> Result<(), String> {
-    state.engine.engage_kill_switch(reason).await.map_err(|e| e.to_string())
+pub async fn engine_engage_kill_switch(
+    state: State<'_, AppState>,
+    reason: String,
+) -> Result<(), String> {
+    state
+        .engine
+        .engage_kill_switch(reason)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn engine_update_risk_limits(state: State<'_, AppState>, limits: RiskLimits) -> Result<(), String> {
+pub async fn engine_update_risk_limits(
+    state: State<'_, AppState>,
+    limits: RiskLimits,
+) -> Result<(), String> {
     state
         .engine
         .update_risk_limits(limits)
@@ -212,7 +297,10 @@ pub async fn engine_update_risk_limits(state: State<'_, AppState>, limits: RiskL
 }
 
 #[tauri::command]
-pub async fn engine_set_active_profile(state: State<'_, AppState>, profile: String) -> Result<(), String> {
+pub async fn engine_set_active_profile(
+    state: State<'_, AppState>,
+    profile: String,
+) -> Result<(), String> {
     state
         .engine
         .set_active_profile(&profile)
@@ -237,7 +325,11 @@ pub async fn engine_list_audit_events(
 
 #[tauri::command]
 pub async fn engine_export_audit_jsonl(state: State<'_, AppState>) -> Result<String, String> {
-    state.engine.export_audit_jsonl().await.map_err(|e| e.to_string())
+    state
+        .engine
+        .export_audit_jsonl()
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -298,7 +390,10 @@ pub async fn engine_upsert_strategy_def(
 }
 
 #[tauri::command]
-pub async fn engine_delete_strategy_def(state: State<'_, AppState>, id: String) -> Result<(), String> {
+pub async fn engine_delete_strategy_def(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<(), String> {
     state
         .engine
         .delete_strategy_def(&id)
@@ -307,7 +402,10 @@ pub async fn engine_delete_strategy_def(state: State<'_, AppState>, id: String) 
 }
 
 #[tauri::command]
-pub async fn engine_start_strategy_def(state: State<'_, AppState>, id: String) -> Result<String, String> {
+pub async fn engine_start_strategy_def(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<String, String> {
     state
         .engine
         .start_strategy_def(&id)
@@ -316,7 +414,9 @@ pub async fn engine_start_strategy_def(state: State<'_, AppState>, id: String) -
 }
 
 #[tauri::command]
-pub async fn engine_list_models(state: State<'_, AppState>) -> Result<Vec<RegisteredModel>, String> {
+pub async fn engine_list_models(
+    state: State<'_, AppState>,
+) -> Result<Vec<RegisteredModel>, String> {
     state.engine.list_models().await.map_err(|e| e.to_string())
 }
 
@@ -334,7 +434,11 @@ pub async fn engine_register_model(
 
 #[tauri::command]
 pub async fn engine_delete_model(state: State<'_, AppState>, id: String) -> Result<(), String> {
-    state.engine.delete_model(&id).await.map_err(|e| e.to_string())
+    state
+        .engine
+        .delete_model(&id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -358,7 +462,11 @@ pub async fn enable_live_trading_unlock(
 ) -> Result<(), String> {
     state
         .engine
-        .enable_live_trading_unlock(&confirmation_phrase, risk_non_default, kill_switch_configured)
+        .enable_live_trading_unlock(
+            &confirmation_phrase,
+            risk_non_default,
+            kill_switch_configured,
+        )
         .await
         .map_err(|e| e.to_string())
 }

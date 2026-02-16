@@ -213,7 +213,14 @@
     "metrics_ic": "IC",
     "metrics_acc": "準確率",
     "open_json": "開啟 JSON",
-    "open_html": "開啟 HTML"
+    "open_html": "開啟 HTML",
+    "ai_signal_title": "AI 訊號工作台",
+    "ai_signal_help": "透過已配置的模型路由（OpenAI/DeepSeek/千問/Grok/Ollama）執行短週期訊號評估；不確定時預設 hold/不交易。",
+    "ai_horizon": "持有週期（秒）",
+    "ai_reason": "上下文",
+    "ai_run": "產生 AI 訊號",
+    "ai_action": "動作",
+    "ai_confidence": "信心"
   },
   "backtest": {
     "runner": "回測執行器",
@@ -342,7 +349,25 @@
     "live_unlocked_alert": "已解鎖實盤交易（流程完成）。",
     "live_warning": "重要：實盤模式可能送出真實訂單。如有任何異常，請立即觸發緊急停止。",
     "language": "語言",
-    "language_hint": "介面語言偏好（本機儲存）。"
+    "language_hint": "介面語言偏好（本機儲存）。",
+    "ai_models": "模型 API 路由",
+    "ai_badge": "多供應商路由 + 不確定預設 hold",
+    "ai_help": "設定模型 API 供應商與路由順序。僅在 API Key 與風控驗證完成後再啟用。",
+    "ai_provider": "供應商",
+    "ai_kind": "供應商類型",
+    "ai_secret_key": "API 金鑰名稱",
+    "base_url": "基礎網址",
+    "ai_model": "模型",
+    "ai_timeout_ms": "逾時（毫秒）",
+    "ai_max_tokens": "最大 Token",
+    "ai_temp": "溫度",
+    "ai_primary": "主要供應商",
+    "ai_fallbacks": "備援供應商",
+    "ai_fallbacks_hint": "以逗號分隔 provider id，例如 deepseek,qwen,grok,ollama",
+    "ai_test_provider": "測試供應商",
+    "ai_save_provider": "儲存供應商",
+    "ai_save_router": "儲存路由",
+    "ai_test_result": "測試結果"
   },
   "catalog": {
     "strategy": {
@@ -357,6 +382,10 @@
       "rhai_script": {
         "name": "自訂腳本（Rhai）",
         "description": "沙箱化自訂策略腳本（實盤模式停用）。"
+      },
+      "short_term_momentum_bot": {
+        "name": "短線動量機器人",
+        "description": "短週期動量進場，搭配停利/停損/持倉時限出場，並支援可選 AI 複核門禁。"
       }
     },
     "model": {

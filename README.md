@@ -21,9 +21,10 @@
   - 预交易风控：下单频率、订单数量、持仓上限、价格带、交易时段、冷却窗口、市场前缀白名单、品种白名单
   - 失效保护：Kill Switch（UI + 全局热键）、崩溃后 Safe Mode
 - 策略与模型：
-  - 内置策略：MA Crossover、Mean Reversion
+  - 内置策略：MA Crossover、Mean Reversion、Short-Term Momentum Bot
   - 自定义策略脚本：Rhai 沙箱（实盘禁用）
   - 模型插件：内置指标模型 + ONNX（离线评估）
+  - 模型 API 路由：OpenAI / DeepSeek / Qwen(千问) / Grok / Ollama（可配置主备路由）
 - 回测与评估：
   - 事件驱动回测（含手续费/滑点）
   - 指标：总收益、夏普、最大回撤、命中率、换手率、交易数
@@ -149,6 +150,7 @@ pnpm audit
 ## Secrets、日志与本地数据
 
 - Secrets：仅存 OS Keychain（不落盘明文）
+  - 示例：`futu.trade_password`、`ai.openai_api_key`、`ai.deepseek_api_key`、`ai.qwen_api_key`、`ai.grok_api_key`、`ai.ollama_api_key`
 - 非密钥配置：`config.json`（明文，仅存非敏感项）
 - 审计与状态：`db/trade_robot.sqlite`
 - 结构化日志：`logs/trade_robot.jsonl`

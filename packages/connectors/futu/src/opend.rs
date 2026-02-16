@@ -134,10 +134,11 @@ impl OpenDClient {
 
         let addr = parse_opend_addr(&cfg.host, cfg.port)
             .map_err(|e| ConnectorError::ConnectionFailed(e.to_string()))?;
-        let stream = tokio::time::timeout(std::time::Duration::from_secs(5), TcpStream::connect(addr))
-            .await
-            .map_err(|_| ConnectorError::Timeout("connect timeout".to_string()))?
-            .map_err(|e| ConnectorError::ConnectionFailed(e.to_string()))?;
+        let stream =
+            tokio::time::timeout(std::time::Duration::from_secs(5), TcpStream::connect(addr))
+                .await
+                .map_err(|_| ConnectorError::Timeout("connect timeout".to_string()))?
+                .map_err(|e| ConnectorError::ConnectionFailed(e.to_string()))?;
         stream
             .set_nodelay(true)
             .map_err(|e| ConnectorError::ConnectionFailed(e.to_string()))?;
@@ -155,7 +156,9 @@ impl OpenDClient {
             next_packet_serial: AtomicU32::new(1),
         });
 
-        let client = Self { inner: inner.clone() };
+        let client = Self {
+            inner: inner.clone(),
+        };
         tokio::spawn(read_loop(reader, inner.clone()));
 
         // InitConnect handshake.
@@ -228,7 +231,11 @@ impl OpenDClient {
         let req = crate::pb::init_connect::Request { c2s };
 
         let raw = self
-            .request_raw(PROTO_INIT_CONNECT, req.encode_to_vec(), std::time::Duration::from_secs(8))
+            .request_raw(
+                PROTO_INIT_CONNECT,
+                req.encode_to_vec(),
+                std::time::Duration::from_secs(8),
+            )
             .await?;
         let rsp = crate::pb::init_connect::Response::decode(raw.body.as_slice())
             .map_err(|e| ConnectorError::Protocol(format!("decode init_connect: {e}")))?;
@@ -241,7 +248,9 @@ impl OpenDClient {
             });
         }
 
-        let s2c = rsp.s2c.ok_or_else(|| ConnectorError::Protocol("init_connect missing s2c".to_string()))?;
+        let s2c = rsp
+            .s2c
+            .ok_or_else(|| ConnectorError::Protocol("init_connect missing s2c".to_string()))?;
 
         let conn_id = s2c.conn_id;
         let keep_alive_interval = s2c.keep_alive_interval.max(1) as u32;
@@ -263,17 +272,33 @@ impl OpenDClient {
         let mut ticker = tokio::time::interval(std::time::Duration::from_secs(interval_sec as u64));
         loop {
             ticker.tick().await;
-            let req = crate::pb::keep_alive::Request { c2s: crate::pb::keep_alive::C2s { time: Utc::now().timestamp() } };
+            let req = crate::pb::keep_alive::Request {
+                c2s: crate::pb::keep_alive::C2s {
+                    time: Utc::now().timestamp(),
+                },
+            };
             let _ = self
-                .request_raw(PROTO_KEEP_ALIVE, req.encode_to_vec(), std::time::Duration::from_secs(5))
+                .request_raw(
+                    PROTO_KEEP_ALIVE,
+                    req.encode_to_vec(),
+                    std::time::Duration::from_secs(5),
+                )
                 .await;
         }
     }
 
-    pub async fn get_global_state(&self) -> Result<crate::pb::get_global_state::S2c, ConnectorError> {
-        let req = crate::pb::get_global_state::Request { c2s: crate::pb::get_global_state::C2s { user_id: 0 } };
+    pub async fn get_global_state(
+        &self,
+    ) -> Result<crate::pb::get_global_state::S2c, ConnectorError> {
+        let req = crate::pb::get_global_state::Request {
+            c2s: crate::pb::get_global_state::C2s { user_id: 0 },
+        };
         let raw = self
-            .request_raw(PROTO_GET_GLOBAL_STATE, req.encode_to_vec(), std::time::Duration::from_secs(8))
+            .request_raw(
+                PROTO_GET_GLOBAL_STATE,
+                req.encode_to_vec(),
+                std::time::Duration::from_secs(8),
+            )
             .await?;
         let rsp = crate::pb::get_global_state::Response::decode(raw.body.as_slice())
             .map_err(|e| ConnectorError::Protocol(format!("decode get_global_state: {e}")))?;
@@ -285,7 +310,8 @@ impl OpenDClient {
                 ret_msg: rsp.ret_msg.unwrap_or_default(),
             });
         }
-        rsp.s2c.ok_or_else(|| ConnectorError::Protocol("missing s2c".to_string()))
+        rsp.s2c
+            .ok_or_else(|| ConnectorError::Protocol("missing s2c".to_string()))
     }
 
     pub async fn qot_subscribe_basic(&self, symbols: Vec<String>) -> Result<(), ConnectorError> {
@@ -309,7 +335,11 @@ impl OpenDClient {
         let req = crate::pb::qot_sub::Request { c2s };
 
         let raw = self
-            .request_raw(PROTO_QOT_SUB, req.encode_to_vec(), std::time::Duration::from_secs(10))
+            .request_raw(
+                PROTO_QOT_SUB,
+                req.encode_to_vec(),
+                std::time::Duration::from_secs(10),
+            )
             .await?;
         let rsp = crate::pb::qot_sub::Response::decode(raw.body.as_slice())
             .map_err(|e| ConnectorError::Protocol(format!("decode qot_sub: {e}")))?;
@@ -323,15 +353,26 @@ impl OpenDClient {
         Ok(())
     }
 
-    pub async fn qot_get_basic_qot(&self, symbols: Vec<String>) -> Result<Vec<Quote>, ConnectorError> {
+    pub async fn qot_get_basic_qot(
+        &self,
+        symbols: Vec<String>,
+    ) -> Result<Vec<Quote>, ConnectorError> {
         let securities: Vec<crate::pb::qot_common::Security> = symbols
             .iter()
             .map(|s| to_qot_security(s))
             .collect::<Result<Vec<_>, _>>()?;
 
-        let req = crate::pb::qot_get_basic_qot::Request { c2s: crate::pb::qot_get_basic_qot::C2s { security_list: securities } };
+        let req = crate::pb::qot_get_basic_qot::Request {
+            c2s: crate::pb::qot_get_basic_qot::C2s {
+                security_list: securities,
+            },
+        };
         let raw = self
-            .request_raw(PROTO_QOT_GET_BASIC_QOT, req.encode_to_vec(), std::time::Duration::from_secs(10))
+            .request_raw(
+                PROTO_QOT_GET_BASIC_QOT,
+                req.encode_to_vec(),
+                std::time::Duration::from_secs(10),
+            )
             .await?;
         let rsp = crate::pb::qot_get_basic_qot::Response::decode(raw.body.as_slice())
             .map_err(|e| ConnectorError::Protocol(format!("decode qot_get_basic_qot: {e}")))?;
@@ -376,9 +417,20 @@ impl OpenDClient {
         };
 
         let sec = to_qot_security(&symbol)?;
-        let req = crate::pb::qot_get_kl::Request { c2s: crate::pb::qot_get_kl::C2s { rehab_type, kl_type, security: sec, req_num: limit as i32 } };
+        let req = crate::pb::qot_get_kl::Request {
+            c2s: crate::pb::qot_get_kl::C2s {
+                rehab_type,
+                kl_type,
+                security: sec,
+                req_num: limit as i32,
+            },
+        };
         let raw = self
-            .request_raw(PROTO_QOT_GET_KL, req.encode_to_vec(), std::time::Duration::from_secs(10))
+            .request_raw(
+                PROTO_QOT_GET_KL,
+                req.encode_to_vec(),
+                std::time::Duration::from_secs(10),
+            )
             .await?;
         let rsp = crate::pb::qot_get_kl::Response::decode(raw.body.as_slice())
             .map_err(|e| ConnectorError::Protocol(format!("decode qot_get_kl: {e}")))?;
@@ -390,7 +442,9 @@ impl OpenDClient {
             });
         }
 
-        let s2c = rsp.s2c.ok_or_else(|| ConnectorError::Protocol("missing s2c".to_string()))?;
+        let s2c = rsp
+            .s2c
+            .ok_or_else(|| ConnectorError::Protocol("missing s2c".to_string()))?;
         let mut out = Vec::new();
         for kl in s2c.kl_list {
             if kl.is_blank {
@@ -404,9 +458,19 @@ impl OpenDClient {
     }
 
     pub async fn trd_get_acc_list(&self) -> Result<Vec<OpenDTradeAccount>, ConnectorError> {
-        let req = crate::pb::trd_get_acc_list::Request { c2s: crate::pb::trd_get_acc_list::C2s { user_id: 0, trd_category: None, need_general_sec_account: None } };
+        let req = crate::pb::trd_get_acc_list::Request {
+            c2s: crate::pb::trd_get_acc_list::C2s {
+                user_id: 0,
+                trd_category: None,
+                need_general_sec_account: None,
+            },
+        };
         let raw = self
-            .request_raw(PROTO_TRD_GET_ACC_LIST, req.encode_to_vec(), std::time::Duration::from_secs(10))
+            .request_raw(
+                PROTO_TRD_GET_ACC_LIST,
+                req.encode_to_vec(),
+                std::time::Duration::from_secs(10),
+            )
             .await?;
         let rsp = crate::pb::trd_get_acc_list::Response::decode(raw.body.as_slice())
             .map_err(|e| ConnectorError::Protocol(format!("decode trd_get_acc_list: {e}")))?;
@@ -432,9 +496,19 @@ impl OpenDClient {
     }
 
     pub async fn trd_unlock_trade(&self, pwd_md5_hex_lower: String) -> Result<(), ConnectorError> {
-        let req = crate::pb::trd_unlock_trade::Request { c2s: crate::pb::trd_unlock_trade::C2s { unlock: true, pwd_md5: Some(pwd_md5_hex_lower), security_firm: None } };
+        let req = crate::pb::trd_unlock_trade::Request {
+            c2s: crate::pb::trd_unlock_trade::C2s {
+                unlock: true,
+                pwd_md5: Some(pwd_md5_hex_lower),
+                security_firm: None,
+            },
+        };
         let raw = self
-            .request_raw(PROTO_TRD_UNLOCK_TRADE, req.encode_to_vec(), std::time::Duration::from_secs(10))
+            .request_raw(
+                PROTO_TRD_UNLOCK_TRADE,
+                req.encode_to_vec(),
+                std::time::Duration::from_secs(10),
+            )
             .await?;
         let rsp = crate::pb::trd_unlock_trade::Response::decode(raw.body.as_slice())
             .map_err(|e| ConnectorError::Protocol(format!("decode trd_unlock_trade: {e}")))?;
@@ -449,9 +523,17 @@ impl OpenDClient {
     }
 
     pub async fn trd_sub_acc_push(&self, acc_ids: Vec<u64>) -> Result<(), ConnectorError> {
-        let req = crate::pb::trd_sub_acc_push::Request { c2s: crate::pb::trd_sub_acc_push::C2s { acc_id_list: acc_ids } };
+        let req = crate::pb::trd_sub_acc_push::Request {
+            c2s: crate::pb::trd_sub_acc_push::C2s {
+                acc_id_list: acc_ids,
+            },
+        };
         let raw = self
-            .request_raw(PROTO_TRD_SUB_ACC_PUSH, req.encode_to_vec(), std::time::Duration::from_secs(10))
+            .request_raw(
+                PROTO_TRD_SUB_ACC_PUSH,
+                req.encode_to_vec(),
+                std::time::Duration::from_secs(10),
+            )
             .await?;
         let rsp = crate::pb::trd_sub_acc_push::Response::decode(raw.body.as_slice())
             .map_err(|e| ConnectorError::Protocol(format!("decode trd_sub_acc_push: {e}")))?;
@@ -488,7 +570,10 @@ impl OpenDClient {
         };
 
         let conn_id = self.inner.conn_id.load(Ordering::Relaxed);
-        let packet_serial = self.inner.next_packet_serial.fetch_add(1, Ordering::Relaxed);
+        let packet_serial = self
+            .inner
+            .next_packet_serial
+            .fetch_add(1, Ordering::Relaxed);
 
         let req = crate::pb::trd_place_order::Request {
             c2s: crate::pb::trd_place_order::C2s {
@@ -521,7 +606,11 @@ impl OpenDClient {
         };
 
         let raw = self
-            .request_raw(PROTO_TRD_PLACE_ORDER, req.encode_to_vec(), std::time::Duration::from_secs(12))
+            .request_raw(
+                PROTO_TRD_PLACE_ORDER,
+                req.encode_to_vec(),
+                std::time::Duration::from_secs(12),
+            )
             .await?;
         let rsp = crate::pb::trd_place_order::Response::decode(raw.body.as_slice())
             .map_err(|e| ConnectorError::Protocol(format!("decode trd_place_order: {e}")))?;
@@ -532,18 +621,27 @@ impl OpenDClient {
                 ret_msg: rsp.ret_msg.unwrap_or_default(),
             });
         }
-        let s2c = rsp.s2c.ok_or_else(|| ConnectorError::Protocol("missing s2c".to_string()))?;
+        let s2c = rsp
+            .s2c
+            .ok_or_else(|| ConnectorError::Protocol("missing s2c".to_string()))?;
         Ok(OpenDOrderRef {
             order_id: s2c.order_id.unwrap_or(0),
             order_id_ex: s2c.order_id_ex,
         })
     }
 
-    pub async fn trd_cancel_order(&self, header: OpenDTradeHeader, order_id_ex: String) -> Result<(), ConnectorError> {
+    pub async fn trd_cancel_order(
+        &self,
+        header: OpenDTradeHeader,
+        order_id_ex: String,
+    ) -> Result<(), ConnectorError> {
         let trd_market = header.trd_market;
 
         let conn_id = self.inner.conn_id.load(Ordering::Relaxed);
-        let packet_serial = self.inner.next_packet_serial.fetch_add(1, Ordering::Relaxed);
+        let packet_serial = self
+            .inner
+            .next_packet_serial
+            .fetch_add(1, Ordering::Relaxed);
 
         let req = crate::pb::trd_modify_order::Request {
             c2s: crate::pb::trd_modify_order::C2s {
@@ -573,7 +671,11 @@ impl OpenDClient {
         };
 
         let raw = self
-            .request_raw(PROTO_TRD_MODIFY_ORDER, req.encode_to_vec(), std::time::Duration::from_secs(12))
+            .request_raw(
+                PROTO_TRD_MODIFY_ORDER,
+                req.encode_to_vec(),
+                std::time::Duration::from_secs(12),
+            )
             .await?;
         let rsp = crate::pb::trd_modify_order::Response::decode(raw.body.as_slice())
             .map_err(|e| ConnectorError::Protocol(format!("decode trd_modify_order: {e}")))?;
@@ -587,7 +689,10 @@ impl OpenDClient {
         Ok(())
     }
 
-    pub async fn trd_get_order_list(&self, header: OpenDTradeHeader) -> Result<Vec<crate::pb::trd_common::Order>, ConnectorError> {
+    pub async fn trd_get_order_list(
+        &self,
+        header: OpenDTradeHeader,
+    ) -> Result<Vec<crate::pb::trd_common::Order>, ConnectorError> {
         let req = crate::pb::trd_get_order_list::Request {
             c2s: crate::pb::trd_get_order_list::C2s {
                 header: crate::pb::trd_common::TrdHeader {
@@ -602,7 +707,11 @@ impl OpenDClient {
         };
 
         let raw = self
-            .request_raw(PROTO_TRD_GET_ORDER_LIST, req.encode_to_vec(), std::time::Duration::from_secs(10))
+            .request_raw(
+                PROTO_TRD_GET_ORDER_LIST,
+                req.encode_to_vec(),
+                std::time::Duration::from_secs(10),
+            )
             .await?;
         let rsp = crate::pb::trd_get_order_list::Response::decode(raw.body.as_slice())
             .map_err(|e| ConnectorError::Protocol(format!("decode trd_get_order_list: {e}")))?;
@@ -613,11 +722,16 @@ impl OpenDClient {
                 ret_msg: rsp.ret_msg.unwrap_or_default(),
             });
         }
-        let s2c = rsp.s2c.ok_or_else(|| ConnectorError::Protocol("missing s2c".to_string()))?;
+        let s2c = rsp
+            .s2c
+            .ok_or_else(|| ConnectorError::Protocol("missing s2c".to_string()))?;
         Ok(s2c.order_list)
     }
 
-    pub async fn trd_get_orders(&self, header: OpenDTradeHeader) -> Result<Vec<Order>, ConnectorError> {
+    pub async fn trd_get_orders(
+        &self,
+        header: OpenDTradeHeader,
+    ) -> Result<Vec<Order>, ConnectorError> {
         let list = self.trd_get_order_list(header).await?;
         let mut out = Vec::new();
         for o in list {
@@ -645,7 +759,11 @@ impl OpenDClient {
             },
         };
         let raw = self
-            .request_raw(PROTO_TRD_GET_POSITION_LIST, req.encode_to_vec(), std::time::Duration::from_secs(10))
+            .request_raw(
+                PROTO_TRD_GET_POSITION_LIST,
+                req.encode_to_vec(),
+                std::time::Duration::from_secs(10),
+            )
             .await?;
         let rsp = crate::pb::trd_get_position_list::Response::decode(raw.body.as_slice())
             .map_err(|e| ConnectorError::Protocol(format!("decode trd_get_position_list: {e}")))?;
@@ -656,11 +774,16 @@ impl OpenDClient {
                 ret_msg: rsp.ret_msg.unwrap_or_default(),
             });
         }
-        let s2c = rsp.s2c.ok_or_else(|| ConnectorError::Protocol("missing s2c".to_string()))?;
+        let s2c = rsp
+            .s2c
+            .ok_or_else(|| ConnectorError::Protocol("missing s2c".to_string()))?;
         Ok(s2c.position_list)
     }
 
-    pub async fn trd_get_positions(&self, header: OpenDTradeHeader) -> Result<Vec<Position>, ConnectorError> {
+    pub async fn trd_get_positions(
+        &self,
+        header: OpenDTradeHeader,
+    ) -> Result<Vec<Position>, ConnectorError> {
         let list = self.trd_get_position_list(header).await?;
         let mut out = Vec::new();
         for p in list {
@@ -686,7 +809,11 @@ impl OpenDClient {
             },
         };
         let raw = self
-            .request_raw(PROTO_TRD_GET_FUNDS, req.encode_to_vec(), std::time::Duration::from_secs(10))
+            .request_raw(
+                PROTO_TRD_GET_FUNDS,
+                req.encode_to_vec(),
+                std::time::Duration::from_secs(10),
+            )
             .await?;
         let rsp = crate::pb::trd_get_funds::Response::decode(raw.body.as_slice())
             .map_err(|e| ConnectorError::Protocol(format!("decode trd_get_funds: {e}")))?;
@@ -864,10 +991,7 @@ fn truncate_remark(s: &str) -> String {
 
 fn to_qot_security(symbol: &str) -> Result<crate::pb::qot_common::Security, ConnectorError> {
     let (mkt, code) = parse_futu_symbol(symbol)?;
-    Ok(crate::pb::qot_common::Security {
-        market: mkt,
-        code,
-    })
+    Ok(crate::pb::qot_common::Security { market: mkt, code })
 }
 
 fn parse_futu_symbol(symbol: &str) -> Result<(i32, String), ConnectorError> {
@@ -951,7 +1075,11 @@ fn parse_opend_dt(s: &str) -> Option<DateTime<Utc>> {
     None
 }
 
-fn kline_to_candle(symbol: &str, interval_sec: u32, kl: &crate::pb::qot_common::KLine) -> Result<Candle, ConnectorError> {
+fn kline_to_candle(
+    symbol: &str,
+    interval_sec: u32,
+    kl: &crate::pb::qot_common::KLine,
+) -> Result<Candle, ConnectorError> {
     let ts = if let Some(t) = kl.timestamp {
         let millis = (t * 1000.0) as i64;
         DateTime::<Utc>::from_timestamp_millis(millis).unwrap_or_else(Utc::now)
@@ -1062,7 +1190,10 @@ fn trd_fill_to_fill(symbol: &str, f: &crate::pb::trd_common::OrderFill) -> Fill 
         parse_opend_dt(&f.create_time).unwrap_or_else(Utc::now)
     };
     Fill {
-        order_id: f.order_id_ex.clone().unwrap_or_else(|| f.order_id.unwrap_or(0).to_string()),
+        order_id: f
+            .order_id_ex
+            .clone()
+            .unwrap_or_else(|| f.order_id.unwrap_or(0).to_string()),
         symbol: symbol.to_string(),
         side,
         qty: f.qty.floor().max(0.0) as u32,
@@ -1130,7 +1261,11 @@ fn to_trade_routing(symbol: &str) -> Result<(i32, i32, String), ConnectorError> 
     Ok((trd_market, sec_market, code.to_string()))
 }
 
-fn format_trd_symbol(trd_market: Option<i32>, sec_market: Option<i32>, code: Option<&str>) -> String {
+fn format_trd_symbol(
+    trd_market: Option<i32>,
+    sec_market: Option<i32>,
+    code: Option<&str>,
+) -> String {
     let code = code.unwrap_or_default();
     let prefix = match (trd_market.unwrap_or(0), sec_market.unwrap_or(0)) {
         (x, _) if x == crate::pb::trd_common::TrdMarket::Us as i32 => "US",

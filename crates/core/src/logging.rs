@@ -20,6 +20,9 @@ pub fn init_logging(paths: &AppPaths) -> anyhow::Result<()> {
         .with_current_span(true)
         .with_span_list(true);
 
-    tracing_subscriber::registry().with(env_filter).with(fmt).init();
+    tracing_subscriber::registry()
+        .with(env_filter)
+        .with(fmt)
+        .init();
     Ok(())
 }

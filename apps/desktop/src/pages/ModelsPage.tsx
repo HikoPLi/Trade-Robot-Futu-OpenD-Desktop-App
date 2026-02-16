@@ -3,9 +3,11 @@ import { useTranslation } from "react-i18next";
 import { openPath } from "@tauri-apps/plugin-opener";
 import {
   ModelCatalogSchema,
+  type AiSignalResponse,
   type ModelCatalog,
   type ModelKind,
   type ModelEvalRunResult,
+  type OrderSide,
   type RegisteredModel,
 } from "@trade-robot/shared";
 import { Badge, Button, Card, Field, Input, Select } from "../components/ui";
@@ -33,6 +35,11 @@ export function ModelsPage() {
   const [evalCsvPath, setEvalCsvPath] = useState<string>("");
   const [evalSeed, setEvalSeed] = useState<number>(42);
   const [evalResult, setEvalResult] = useState<ModelEvalRunResult | null>(null);
+  const [aiSymbol, setAiSymbol] = useState<string>(s?.watchlist[0] ?? "US.AAPL");
+  const [aiSide, setAiSide] = useState<OrderSide>("buy");
+  const [aiReason, setAiReason] = useState<string>("short-term momentum breakout setup");
+  const [aiHorizonSec, setAiHorizonSec] = useState<number>(60);
+  const [aiSignal, setAiSignal] = useState<AiSignalResponse | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -125,6 +132,22 @@ export function ModelsPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function onGenerateAiSignal() {
+    const q = s?.quotes.find((x) => x.symbol === aiSymbol);
+    const last = q?.last ?? 0;
+    const spread_bps = q && q.last > 0 ? ((q.ask - q.bid) / q.last) * 10000 : 0;
+    const res = await eng.generateAiSignal({
+      symbol: aiSymbol,
+      strategy_id: "manual_ai_workbench",
+      proposed_side: aiSide,
+      reason: aiReason,
+      last_price: last,
+      spread_bps,
+      horizon_sec: aiHorizonSec,
+    });
+    setAiSignal(res);
   }
 
   return (
@@ -351,6 +374,61 @@ export function ModelsPage() {
                 {t("models.open_html")}
               </Button>
             </div>
+          </div>
+        ) : null}
+      </Card>
+
+      <Card style={{ padding: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <div style={{ fontWeight: 700 }}>{t("models.ai_signal_title")}</div>
+          <Badge tone="neutral">{aiSignal ? `${aiSignal.provider_id}/${aiSignal.model}` : "-"}</Badge>
+        </div>
+        <div style={{ marginTop: 10, color: "var(--muted)", fontSize: 12, lineHeight: 1.5 }}>
+          {t("models.ai_signal_help")}
+        </div>
+
+        <div style={{ marginTop: 12 }} className="tr-grid">
+          <div style={{ gridColumn: "span 3" }}>
+            <Field label={t("models.eval_symbol")}>
+              <Input value={aiSymbol} onChange={(e) => setAiSymbol(e.currentTarget.value)} />
+            </Field>
+          </div>
+          <div style={{ gridColumn: "span 2" }}>
+            <Field label={t("trading.side")}>
+              <Select value={aiSide} onChange={(e) => setAiSide(e.currentTarget.value as OrderSide)}>
+                <option value="buy">{t("enum.side.buy")}</option>
+                <option value="sell">{t("enum.side.sell")}</option>
+              </Select>
+            </Field>
+          </div>
+          <div style={{ gridColumn: "span 2" }}>
+            <Field label={t("models.ai_horizon")}>
+              <Input type="number" min={1} value={aiHorizonSec} onChange={(e) => setAiHorizonSec(Number(e.currentTarget.value))} />
+            </Field>
+          </div>
+          <div style={{ gridColumn: "span 5" }}>
+            <Field label={t("models.ai_reason")}>
+              <Input value={aiReason} onChange={(e) => setAiReason(e.currentTarget.value)} />
+            </Field>
+          </div>
+          <div style={{ gridColumn: "span 12", display: "flex", justifyContent: "flex-end" }}>
+            <Button variant="primary" disabled={!aiSymbol || busy} onClick={() => onGenerateAiSignal().catch((e) => alert(String(e)))}>
+              {t("models.ai_run")}
+            </Button>
+          </div>
+        </div>
+
+        {aiSignal ? (
+          <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <Badge tone="neutral">
+              {t("models.ai_action")}: {aiSignal.action.toUpperCase()}
+            </Badge>
+            <Badge tone="neutral">
+              {t("models.ai_confidence")}: {(aiSignal.confidence * 100).toFixed(1)}%
+            </Badge>
+            <Badge tone="neutral">
+              {t("models.ai_reason")}: {aiSignal.reason}
+            </Badge>
           </div>
         ) : null}
       </Card>
