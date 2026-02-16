@@ -15,6 +15,7 @@ name = "desktop_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
+image = { version = "0.25", default-features = false, features = ["png", "ico"] }
 tauri-build = { version = "2", features = [] }
 
 [dependencies]

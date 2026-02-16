@@ -9,7 +9,9 @@ import {
 import type { Candle } from "@trade-robot/shared";
 
 function isoToUtcSeconds(ts: string): UTCTimestamp {
-  return Math.floor(new Date(ts).getTime() / 1000) as UTCTimestamp;
+  const ms = new Date(ts).getTime();
+  if (!Number.isFinite(ms) || Number.isNaN(ms) || ms <= 0) return 0 as UTCTimestamp;
+  return Math.floor(ms / 1000) as UTCTimestamp;
 }
 
 export function CandleChart({
@@ -24,13 +26,21 @@ export function CandleChart({
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
 
   const data = useMemo(() => {
-    return candles.map((c) => ({
-      time: isoToUtcSeconds(c.ts),
-      open: c.open,
-      high: c.high,
-      low: c.low,
-      close: c.close,
-    }));
+    const map = new Map<number, { time: UTCTimestamp; open: number; high: number; low: number; close: number }>();
+    for (const c of candles) {
+      const time = isoToUtcSeconds(c.ts);
+      if (!time) continue;
+      if (![c.open, c.high, c.low, c.close].every((v) => Number.isFinite(v))) continue;
+      map.set(Number(time), {
+        time,
+        open: c.open,
+        high: c.high,
+        low: c.low,
+        close: c.close,
+      });
+    }
+    const out = Array.from(map.values()).sort((a, b) => Number(a.time) - Number(b.time));
+    return out;
   }, [candles]);
 
   useEffect(() => {
@@ -38,7 +48,7 @@ export function CandleChart({
 
     const chart = createChart(ref.current, {
       height,
-      width: ref.current.clientWidth,
+      width: Math.max(320, ref.current.clientWidth || 0),
       layout: {
         background: { color: "transparent" },
         textColor: "rgba(255,255,255,0.75)",
@@ -68,9 +78,11 @@ export function CandleChart({
       wickDownColor: "rgba(255,77,109,0.65)",
     });
 
-    if (data.length) {
+    try {
       series.setData(data);
-      chart.timeScale().fitContent();
+      if (data.length) chart.timeScale().fitContent();
+    } catch (err) {
+      console.error("failed to set candle data", err);
     }
 
     chartRef.current = chart;
@@ -92,9 +104,15 @@ export function CandleChart({
 
   useEffect(() => {
     const series = seriesRef.current;
-    if (!series) return;
-    if (data.length) series.setData(data);
+    const chart = chartRef.current;
+    if (!series || !chart) return;
+    try {
+      series.setData(data);
+      if (data.length) chart.timeScale().fitContent();
+    } catch (err) {
+      console.error("failed to update candle data", err);
+    }
   }, [data]);
 
-  return <div ref={ref} style={{ width: "100%" }} />;
+  return <div ref={ref} style={{ width: "100%", height, minHeight: height }} />;
 }

@@ -156,6 +156,14 @@
   gap: 12px;
 }
 
+.tr-guide-half {
+  grid-column: span 6;
+}
+
+.tr-guide-third {
+  grid-column: span 4;
+}
+
 @media (max-width: 980px) {
   .tr-shell {
     grid-template-columns: 1fr;
@@ -169,5 +177,9 @@
   }
   .tr-split {
     grid-template-columns: 1fr;
+  }
+  .tr-guide-half,
+  .tr-guide-third {
+    grid-column: span 12;
   }
 }

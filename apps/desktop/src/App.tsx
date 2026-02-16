@@ -11,6 +11,7 @@ import { ModelsPage } from "./pages/ModelsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { StrategiesPage } from "./pages/StrategiesPage";
 import { TradingPage } from "./pages/TradingPage";
+import { GuidePage } from "./pages/GuidePage";
 
 function NavItem({ to, label }: { to: string; label: string }) {
   return (
@@ -72,6 +73,7 @@ export default function App() {
           <NavItem to="/backtest" label={t("nav.backtest")} />
           <NavItem to="/audit" label={t("nav.audit")} />
           <NavItem to="/settings" label={t("nav.settings")} />
+          <NavItem to="/guide" label={t("nav.guide")} />
           <NavItem to="/diagnostics" label={t("nav.diagnostics")} />
         </nav>
 
@@ -99,6 +101,7 @@ export default function App() {
             <Route path="/backtest" element={<BacktestPage />} />
             <Route path="/audit" element={<AuditPage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/guide" element={<GuidePage />} />
             <Route path="/diagnostics" element={<DiagnosticsPage />} />
           </Routes>
         </div>

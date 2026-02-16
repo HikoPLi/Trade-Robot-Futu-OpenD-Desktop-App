@@ -927,7 +927,7 @@ impl EngineHandle {
         limit: usize,
     ) -> anyhow::Result<Vec<trader_shared::Candle>> {
         let mode = self.inner.active_profile.read().mode;
-        if matches!(mode, trader_shared::ProfileMode::Live) {
+        let mut candles = if matches!(mode, trader_shared::ProfileMode::Live) {
             let client = { self.inner.live.lock().client.clone() };
             let Some(client) = client else {
                 anyhow::bail!("OpenD is not connected");
@@ -942,7 +942,16 @@ impl EngineHandle {
                 .mock_market
                 .get_candles(symbol, interval_sec, limit)
                 .await)
+        }?;
+
+        // Defensive normalization for charting: ascending time and no duplicates.
+        candles.sort_by(|a, b| a.ts.cmp(&b.ts));
+        candles.dedup_by(|a, b| a.symbol == b.symbol && a.interval_sec == b.interval_sec && a.ts == b.ts);
+        if candles.len() > limit {
+            let keep_from = candles.len() - limit;
+            candles = candles.split_off(keep_from);
         }
+        Ok(candles)
     }
 
     pub async fn place_order(

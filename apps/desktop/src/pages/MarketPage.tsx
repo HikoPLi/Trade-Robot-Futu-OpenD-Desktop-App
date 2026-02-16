@@ -53,6 +53,14 @@ export function MarketPage() {
   }, [selectedSymbol, intervalSec]);
 
   useEffect(() => {
+    if (!selectedSymbol) return;
+    const timer = window.setInterval(() => {
+      refreshCandles(selectedSymbol, intervalSec).catch(() => {});
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [selectedSymbol, intervalSec]);
+
+  useEffect(() => {
     // OpenD KL supports 1m/5m in MVP. Avoid spamming errors in live mode.
     if (s?.active_profile.mode === "live" && intervalSec < 60) setIntervalSec(60);
   }, [s?.active_profile.mode, intervalSec]);

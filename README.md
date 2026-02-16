@@ -15,7 +15,7 @@
 
 - 桌面应用：
   - Tauri v2（Rust Host）+ React/TypeScript UI
-  - 页面：Dashboard / Market / Trading / Strategies / Models / Backtest / Audit / Settings / Diagnostics
+  - 页面：Dashboard / Market / Trading / Strategies / Models / Backtest / Audit / Settings / Guide / Diagnostics
 - 交易与风控：
   - 多 Profile：`paper`、`live`、`research`
   - 预交易风控：下单频率、订单数量、持仓上限、价格带、交易时段、冷却窗口、市场前缀白名单、品种白名单
@@ -111,6 +111,15 @@ pnpm build
 
 产物目录：`target/release/bundle/`
 
+### 应用图标（appIcon）
+
+- 将你的图标放在仓库根目录：`appIcon.png`
+- 可选：同时提供 `appIcon.ico`（Windows）与 `appIcon.icns`（macOS）
+- 构建时会自动同步到 `apps/desktop/src-tauri/icons/`
+  - 生成/覆盖：`32x32.png`、`128x128.png`、`128x128@2x.png`、`icon.png`
+  - 若未提供 `appIcon.ico`，会由 `appIcon.png` 自动生成 `icon.ico`
+  - 若未提供 `appIcon.icns`，macOS 将回退使用现有 `icon.icns`
+
 ## 常用工程命令
 
 ```bash
@@ -194,6 +203,7 @@ directories::ProjectDirs::from("com", "lihiko", "TradeRobot")
 - 架构：`docs/ARCHITECTURE.md`
 - 威胁建模（STRIDE）：`docs/THREAT_MODEL.md`
 - 运维手册：`docs/RUNBOOK.md`
+- 用户手册（高标准 SOP）：`docs/USER_GUIDE.md`
 - 开发指南：`docs/DEVELOPMENT.md`
 - 内部 API：`docs/API.md`
 - ADR：`docs/adr/README.md`

@@ -20,6 +20,7 @@
     "backtest": "Backtest",
     "audit": "Audit",
     "settings": "Settings",
+    "guide": "Guide",
     "diagnostics": "Diagnostics"
   },
   "profile": {
@@ -408,6 +409,118 @@
     "kill_switch": "Kill switch",
     "hotkey": "Hotkey",
     "raw_snapshot": "Raw Snapshot"
+  },
+  "guide": {
+    "title": "Operations Guide",
+    "badge": "Industry-Grade SOP",
+    "subtitle": "This page is the runbook for traders, strategy developers, and operators. Follow these steps as executable procedures, not marketing tips.",
+    "updated_at": "Updated: 2026-02-16",
+    "quickstart": {
+      "title": "15-Minute Quick Start",
+      "badge": "Paper First",
+      "steps": {
+        "1": "Set profile to paper and verify engine status is running.",
+        "2": "Configure non-default risk limits before any strategy run.",
+        "3": "Configure and test a global kill switch hotkey.",
+        "4": "Set OpenD host/port and run a connectivity test.",
+        "5": "Add 3-5 symbols to watchlist and verify quote updates.",
+        "6": "Place one small manual paper order and verify fill trail in Audit.",
+        "7": "Start one built-in strategy with conservative params.",
+        "8": "Review signals, orders, and risk events in Audit/Diagnostics."
+      }
+    },
+    "safety": {
+      "title": "Safety Principles",
+      "badge": "Mandatory",
+      "items": {
+        "1": "If uncertain, do nothing. Safety beats activity.",
+        "2": "All model outputs are advisory; risk engine is authoritative.",
+        "3": "No live unlock without explicit checklist completion.",
+        "4": "Treat connectivity degradation as a halt condition.",
+        "5": "Every critical action must be auditable with trace ID."
+      }
+    },
+    "lifecycle": {
+      "title": "Strategy Lifecycle",
+      "badge": "Draft to Live",
+      "items": {
+        "1": "Draft: parameter shaping and failure-mode checks.",
+        "2": "Paper: multi-session validation with stable behavior.",
+        "3": "Research: replay/backtest against fixed datasets and seeds.",
+        "4": "Live: unlock only after Go/No-Go checklist passes."
+      }
+    },
+    "live_checklist": {
+      "title": "Live Go/No-Go Checklist",
+      "badge": "Go only if all checked",
+      "note": "Any unchecked item means No-Go.",
+      "items": {
+        "1": "Risk disclaimer read and confirmation phrase entered exactly.",
+        "2": "Risk limits are non-default and saved.",
+        "3": "Kill switch hotkey configured and tested.",
+        "4": "OpenD trade environment set to real.",
+        "5": "futu.trade_password stored in OS keychain.",
+        "6": "OpenD connectivity and account checks pass.",
+        "7": "At least one full paper rehearsal completed today.",
+        "8": "Operator confirms incident response path is ready."
+      }
+    },
+    "sop": {
+      "title": "Daily SOP",
+      "badge": "Operate by checklist",
+      "pre_title": "Pre-Market",
+      "during_title": "In Session",
+      "after_title": "Post-Market",
+      "pre": {
+        "1": "Confirm engine is not in safe mode and kill switch is off.",
+        "2": "Verify quote stream health and event latency.",
+        "3": "Re-check risk limits, sessions, and cooldown windows.",
+        "4": "Lock strategy/model versions for the session.",
+        "5": "Run a small paper dry-run if any config changed."
+      },
+      "during": {
+        "1": "Monitor reject rate, fill latency, and risk utilization.",
+        "2": "Reduce concurrency during abnormal volatility spikes.",
+        "3": "If order behavior is abnormal, trigger kill switch first.",
+        "4": "Resume only after root cause and replay verification."
+      },
+      "after": {
+        "1": "Export audit JSONL and archive with date/profile tags.",
+        "2": "Summarize PnL, incidents, rejected orders, and mitigations.",
+        "3": "Record every parameter change with rationale.",
+        "4": "Queue next-day changes in paper mode only."
+      }
+    },
+    "incident": {
+      "title": "Incident Response",
+      "badge": "Fail Safe",
+      "items": {
+        "1": "Trigger kill switch from top bar or global hotkey.",
+        "2": "Capture evidence: Audit events, logs, and snapshot.",
+        "3": "Freeze config changes until cause is identified.",
+        "4": "Reproduce in paper/replay and verify mitigation.",
+        "5": "Resume with reduced risk limits and heightened monitoring."
+      }
+    },
+    "training": {
+      "title": "Team Training Method",
+      "badge": "90-Min Program",
+      "flow_title": "Training Flow",
+      "scoring_title": "Pass Criteria",
+      "flow": {
+        "1": "Safety model and compliance boundaries (20 min).",
+        "2": "Paper workflow drill: market, order, strategy, audit (25 min).",
+        "3": "Backtest and model evaluation drill (20 min).",
+        "4": "Live unlock simulation without real order submission (15 min).",
+        "5": "Incident drill: kill switch + audit export in under 30 seconds (10 min)."
+      },
+      "scoring": {
+        "1": "Can independently complete full paper workflow.",
+        "2": "Can explain each core risk control and trigger.",
+        "3": "Can execute kill switch and evidence export under pressure.",
+        "4": "Can produce justified Go/No-Go decision."
+      }
+    }
   },
   "schema": {
     "required": "required",
