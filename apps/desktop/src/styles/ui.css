@@ -1,0 +1,151 @@
+.tr-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.tr-btn {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+  transition:
+    transform 140ms ease,
+    background 140ms ease,
+    border-color 140ms ease;
+}
+
+.tr-btn--sm {
+  padding: 7px 12px;
+  font-size: 12px;
+  letter-spacing: 0.2px;
+}
+
+.tr-btn--md {
+  padding: 10px 14px;
+  font-size: 13px;
+  letter-spacing: 0.2px;
+}
+
+.tr-btn--subtle:hover {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.20);
+}
+
+.tr-btn--ghost {
+  background: transparent;
+}
+
+.tr-btn--ghost:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.tr-btn--primary {
+  border-color: rgba(68, 229, 167, 0.28);
+  background: linear-gradient(90deg, rgba(68, 229, 167, 0.22), rgba(103, 164, 255, 0.16));
+}
+
+.tr-btn--primary:hover {
+  border-color: rgba(68, 229, 167, 0.55);
+}
+
+.tr-btn--danger {
+  border-color: rgba(255, 77, 109, 0.28);
+  background: rgba(255, 77, 109, 0.14);
+}
+
+.tr-btn--danger:hover {
+  border-color: rgba(255, 77, 109, 0.55);
+}
+
+.tr-btn--disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.tr-btn:active:not(.tr-btn--disabled) {
+  transform: translateY(1px);
+}
+
+.tr-input {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.25);
+  padding: 10px 12px;
+  outline: none;
+  transition: border-color 140ms ease;
+}
+
+.tr-input:focus {
+  border-color: rgba(103, 164, 255, 0.7);
+}
+
+.tr-textarea {
+  min-height: 160px;
+  resize: vertical;
+}
+
+.tr-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.tr-badge--neutral {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--muted);
+}
+
+.tr-badge--good {
+  background: rgba(68, 229, 167, 0.12);
+  border-color: rgba(68, 229, 167, 0.24);
+  color: rgba(68, 229, 167, 0.95);
+}
+
+.tr-badge--warn {
+  background: rgba(255, 207, 90, 0.12);
+  border-color: rgba(255, 207, 90, 0.25);
+  color: rgba(255, 207, 90, 0.95);
+}
+
+.tr-badge--bad {
+  background: rgba(255, 77, 109, 0.12);
+  border-color: rgba(255, 77, 109, 0.25);
+  color: rgba(255, 77, 109, 0.98);
+}
+
+.tr-badge--info {
+  background: rgba(103, 164, 255, 0.12);
+  border-color: rgba(103, 164, 255, 0.25);
+  color: rgba(103, 164, 255, 0.98);
+}
+
+.tr-field {
+  display: grid;
+  gap: 6px;
+}
+
+.tr-field__top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tr-field__label {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.84);
+}
+
+.tr-field__hint {
+  font-size: 12px;
+  color: var(--faint);
+}
+

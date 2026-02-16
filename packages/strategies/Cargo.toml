@@ -1,0 +1,17 @@
+[package]
+name = "trader_strategies"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+chrono.workspace = true
+rand.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+trader_models = { path = "../models" }
+trader_shared = { path = "../../crates/shared" }
+
+rhai = { version = "1.20", features = ["sync", "serde"] }

@@ -1,0 +1,15 @@
+{
+  "name": "trade-robot",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@9.9.0",
+  "scripts": {
+    "dev": "pnpm -C apps/desktop tauri dev",
+    "build": "pnpm -C apps/desktop tauri build",
+    "test": "pnpm -r --if-present test && cargo test --workspace",
+    "fmt": "pnpm -r --if-present fmt && cargo fmt --all",
+    "lint": "pnpm -r --if-present lint && cargo clippy --workspace --all-targets -- -D warnings",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "audit": "pnpm -C apps/desktop audit && cargo audit || true"
+  }
+}

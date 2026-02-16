@@ -1,0 +1,22 @@
+# Node
+node_modules/
+.pnpm-store/
+dist/
+.vite/
+
+# Tauri
+apps/desktop/src-tauri/target/
+apps/desktop/src-tauri/gen/
+
+# Rust
+/target/
+**/*.rs.bk
+
+# Logs / DB
+*.log
+*.sqlite
+*.sqlite3
+
+# OS
+.DS_Store
+Thumbs.db
