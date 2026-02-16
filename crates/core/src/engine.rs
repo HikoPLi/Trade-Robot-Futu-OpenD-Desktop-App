@@ -926,6 +926,13 @@ impl EngineHandle {
         interval_sec: u32,
         limit: usize,
     ) -> anyhow::Result<Vec<trader_shared::Candle>> {
+        if interval_sec == 0 {
+            anyhow::bail!("interval_sec must be > 0");
+        }
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+        let symbol = normalize_symbol(symbol);
         let mode = self.inner.active_profile.read().mode;
         let mut candles = if matches!(mode, trader_shared::ProfileMode::Live) {
             let client = { self.inner.live.lock().client.clone() };
@@ -933,20 +940,26 @@ impl EngineHandle {
                 anyhow::bail!("OpenD is not connected");
             };
             client
-                .qot_get_kl(symbol.to_string(), interval_sec, limit as u32)
+                .qot_get_kl(symbol.clone(), interval_sec, limit as u32)
                 .await
                 .map_err(|e| anyhow::anyhow!(e.to_string()))
         } else {
             Ok(self
                 .inner
                 .mock_market
-                .get_candles(symbol, interval_sec, limit)
+                .get_candles(&symbol, interval_sec, limit)
                 .await)
         }?;
 
         // Defensive normalization for charting: ascending time and no duplicates.
         candles.sort_by(|a, b| a.ts.cmp(&b.ts));
         candles.dedup_by(|a, b| a.symbol == b.symbol && a.interval_sec == b.interval_sec && a.ts == b.ts);
+        if candles.is_empty() {
+            let quote = { self.inner.quotes.read().get(&symbol).cloned() };
+            if let Some(q) = quote {
+                candles = synthesize_flat_candles_from_quote(&q, interval_sec, limit);
+            }
+        }
         if candles.len() > limit {
             let keep_from = candles.len() - limit;
             candles = candles.split_off(keep_from);
@@ -2643,6 +2656,29 @@ fn floor_time(ts: DateTime<Utc>, interval_sec: u32) -> DateTime<Utc> {
     DateTime::<Utc>::from_timestamp(bucket, 0).unwrap_or(ts)
 }
 
+fn synthesize_flat_candles_from_quote(
+    q: &Quote,
+    interval_sec: u32,
+    limit: usize,
+) -> Vec<trader_shared::Candle> {
+    let mut out = Vec::with_capacity(limit);
+    let end = floor_time(q.ts, interval_sec);
+    for i in (0..limit).rev() {
+        let ts = end - chrono::Duration::seconds((i as i64) * (interval_sec as i64));
+        out.push(trader_shared::Candle {
+            symbol: q.symbol.clone(),
+            ts,
+            interval_sec,
+            open: q.last,
+            high: q.last,
+            low: q.last,
+            close: q.last,
+            volume: q.volume,
+        });
+    }
+    out
+}
+
 fn validate_ai_provider_config(provider: &AiProviderConfig) -> anyhow::Result<()> {
     if provider.id.trim().is_empty() {
         anyhow::bail!("provider id is empty");
@@ -2749,5 +2785,36 @@ mod tests {
             trd_market_from_symbol("UNKNOWN"),
             trader_futu_connector::pb::trd_common::TrdMarket::Us as i32
         );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn paper_get_candles_returns_non_empty() {
+        let engine = EngineHandle::new().await.expect("engine should start");
+        let candles = engine
+            .get_candles("US.AAPL", 60, 32)
+            .await
+            .expect("get_candles should succeed");
+        assert!(!candles.is_empty(), "candles should not be empty in paper mode");
+        assert!(
+            candles.iter().all(|c| c.symbol == "US.AAPL"),
+            "all candles should match requested symbol"
+        );
+    }
+
+    #[test]
+    fn synthesize_flat_candles_has_expected_shape() {
+        let q = Quote {
+            symbol: "US.AAPL".to_string(),
+            ts: DateTime::<Utc>::from_timestamp(1_700_000_000, 0).expect("valid ts"),
+            bid: 99.9,
+            ask: 100.1,
+            last: 100.0,
+            volume: 1234.0,
+        };
+        let candles = synthesize_flat_candles_from_quote(&q, 60, 5);
+        assert_eq!(candles.len(), 5);
+        assert!(candles.windows(2).all(|w| w[0].ts < w[1].ts));
+        assert!(candles.iter().all(|c| c.open == 100.0 && c.close == 100.0));
+        assert!(candles.iter().all(|c| c.symbol == "US.AAPL" && c.interval_sec == 60));
     }
 }
