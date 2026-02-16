@@ -252,4 +252,4 @@ Error: Os { code: 2, kind: NotFound, message: "No such file or directory" }
 
 ## License
 
-Apache-2.0
+[Apache-2.0](./LICENSE)
