@@ -1,4 +1,5 @@
 use image::imageops::FilterType;
+use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -7,12 +8,27 @@ fn main() {
     println!("cargo:rerun-if-changed=../../appIcon.png");
     println!("cargo:rerun-if-changed=../../appIcon.ico");
     println!("cargo:rerun-if-changed=../../appIcon.icns");
+    println!("cargo:rerun-if-env-changed=TRADE_ROBOT_SYNC_ICONS");
 
-    if let Err(err) = sync_app_icon_assets() {
-        println!("cargo:warning=failed to sync app icon assets: {err}");
+    if should_sync_app_icon_assets() {
+        if let Err(err) = sync_app_icon_assets() {
+            println!("cargo:warning=failed to sync app icon assets: {err}");
+        }
     }
 
     tauri_build::build()
+}
+
+fn should_sync_app_icon_assets() -> bool {
+    match std::env::var("TRADE_ROBOT_SYNC_ICONS") {
+        Ok(v) => {
+            let vv = v.trim().to_ascii_lowercase();
+            vv == "1" || vv == "true" || vv == "yes" || vv == "on"
+        }
+        Err(_) => std::env::var("PROFILE")
+            .map(|p| p.eq_ignore_ascii_case("release"))
+            .unwrap_or(false),
+    }
 }
 
 fn sync_app_icon_assets() -> Result<(), Box<dyn std::error::Error>> {
@@ -43,16 +59,16 @@ fn sync_app_icon_assets() -> Result<(), Box<dyn std::error::Error>> {
         if !app_icon_ico.exists() {
             // Best-effort: generate Windows icon when only PNG is provided.
             let ico_img = img.resize_exact(256, 256, FilterType::Lanczos3);
-            ico_img.save_with_format(icons_dir.join("icon.ico"), image::ImageFormat::Ico)?;
+            write_image_if_changed(&ico_img, &icons_dir.join("icon.ico"), image::ImageFormat::Ico)?;
         }
     }
 
     if app_icon_ico.exists() {
-        std::fs::copy(&app_icon_ico, icons_dir.join("icon.ico"))?;
+        copy_if_changed(&app_icon_ico, &icons_dir.join("icon.ico"))?;
     }
 
     if app_icon_icns.exists() {
-        std::fs::copy(&app_icon_icns, icons_dir.join("icon.icns"))?;
+        copy_if_changed(&app_icon_icns, &icons_dir.join("icon.icns"))?;
     } else if app_icon_png.exists() {
         generate_icns_from_png(&image::open(&app_icon_png)?, &manifest_dir, &icons_dir)?;
     } else {
@@ -71,8 +87,35 @@ fn write_resized_png(
     height: u32,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let resized = img.resize_exact(width, height, FilterType::Lanczos3);
-    resized.save_with_format(out_path, image::ImageFormat::Png)?;
+    write_image_if_changed(&resized, out_path, image::ImageFormat::Png)?;
     Ok(())
+}
+
+fn write_image_if_changed(
+    img: &image::DynamicImage,
+    out_path: &Path,
+    format: image::ImageFormat,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut cursor = Cursor::new(Vec::<u8>::new());
+    img.write_to(&mut cursor, format)?;
+    let bytes = cursor.into_inner();
+    write_bytes_if_changed(out_path, &bytes)?;
+    Ok(())
+}
+
+fn copy_if_changed(from: &Path, to: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let bytes = std::fs::read(from)?;
+    write_bytes_if_changed(to, &bytes)?;
+    Ok(())
+}
+
+fn write_bytes_if_changed(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    if let Ok(existing) = std::fs::read(path) {
+        if existing == bytes {
+            return Ok(());
+        }
+    }
+    std::fs::write(path, bytes)
 }
 
 fn generate_icns_from_png(

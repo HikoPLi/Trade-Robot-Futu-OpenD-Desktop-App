@@ -115,10 +115,14 @@ pnpm build
 
 - 将你的图标放在仓库根目录：`appIcon.png`
 - 可选：同时提供 `appIcon.ico`（Windows）与 `appIcon.icns`（macOS）
-- 构建时会自动同步到 `apps/desktop/src-tauri/icons/`
+- `release build` 时会自动同步到 `apps/desktop/src-tauri/icons/`（默认不在 `tauri dev` 中执行，避免文件监听重编译循环）
   - 生成/覆盖：`32x32.png`、`128x128.png`、`128x128@2x.png`、`icon.png`
   - 若未提供 `appIcon.ico`，会由 `appIcon.png` 自动生成 `icon.ico`
   - 若未提供 `appIcon.icns`，macOS 将回退使用现有 `icon.icns`
+- 如需在开发模式强制同步图标，使用：
+  ```bash
+  TRADE_ROBOT_SYNC_ICONS=1 pnpm -C apps/desktop tauri dev
+  ```
 
 ## 常用工程命令
 
