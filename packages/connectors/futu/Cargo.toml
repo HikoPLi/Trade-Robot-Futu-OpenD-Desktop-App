@@ -19,5 +19,5 @@ tokio-util = { version = "0.7", features = ["codec"] }
 trader_shared = { path = "../../../crates/shared" }
 
 [build-dependencies]
-prost-build = "0.13"
+prost-build = "0.14"
 protoc-bin-vendored = "3"
