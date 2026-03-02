@@ -22,7 +22,7 @@
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-i18next": "^16.5.4",
-    "react-router-dom": "^7.9.1"
+    "react-router-dom": "^7.13.1"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",
